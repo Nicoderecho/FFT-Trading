@@ -4,7 +4,9 @@
       "Bash(python -m pytest tests/test_data_fetcher.py -v)",
       "Bash(pip install:*)",
       "Bash(PYTHONPATH=src python -m pytest tests/test_data_fetcher.py -v)",
-      "Bash(PYTHONPATH=src python -m pytest tests/test_fft_analysis.py -v)"
+      "Bash(PYTHONPATH=src python -m pytest tests/test_fft_analysis.py -v)",
+      "Bash(PYTHONPATH=src python -m pytest tests/test_prediction.py -v)",
+      "Bash(PYTHONPATH=src python -m pytest tests/test_visualization.py -v)"
     ]
   }
 }

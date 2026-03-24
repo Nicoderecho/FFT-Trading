@@ -23,8 +23,8 @@ class TestPrepareTrainTestSplit:
         stock_data.dates = ["2023-01-01", "2023-02-01", "2023-03-01", "2023-04-01", "2023-05-01", "2023-06-01"]
         stock_data.prices = [100.0, 102.0, 101.0, 103.0, 105.0, 104.0]
         result = prepare_train_test_split(stock_data, "2023-03-01")
-        assert len(result.train_prices) == 2  # Jan, Feb
-        assert len(result.test_prices) == 4   # Mar, Apr, May, Jun
+        assert len(result.train_prices) == 3  # Jan, Feb, Mar (includes train_end_date)
+        assert len(result.test_prices) == 3   # Apr, May, Jun
 
     def test_split_stores_train_end_date(self):
         """Should store the train end date."""
