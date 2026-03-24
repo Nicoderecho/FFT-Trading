@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -m pytest tests/test_data_fetcher.py -v)",
+      "Bash(pip install:*)"
+    ]
+  }
+}
