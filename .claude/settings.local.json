@@ -6,7 +6,10 @@
       "Bash(PYTHONPATH=src python -m pytest tests/test_data_fetcher.py -v)",
       "Bash(PYTHONPATH=src python -m pytest tests/test_fft_analysis.py -v)",
       "Bash(PYTHONPATH=src python -m pytest tests/test_prediction.py -v)",
-      "Bash(PYTHONPATH=src python -m pytest tests/test_visualization.py -v)"
+      "Bash(PYTHONPATH=src python -m pytest tests/test_visualization.py -v)",
+      "Bash(git rm:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
     ]
   }
 }
