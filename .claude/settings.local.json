@@ -9,7 +9,9 @@
       "Bash(PYTHONPATH=src python -m pytest tests/test_visualization.py -v)",
       "Bash(git rm:*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(python -m py_compile main.py)",
+      "Bash(python:*)"
     ]
   }
 }
