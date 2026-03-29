@@ -32,6 +32,12 @@ def fetch_stock_data(ticker: str, start_date: str, end_date: str) -> StockData:
 
     data = StockData(ticker, start_date, end_date)
     data.dates = stock.index.strftime('%Y-%m-%d').tolist()
-    data.prices = stock['Close'].to_numpy().tolist()
+
+    # Handle yfinance multi-level columns and ensure flat list of floats
+    close_prices = stock['Close']
+    if hasattr(close_prices, 'iloc') and hasattr(close_prices, 'columns'):
+        # Multi-level columns - get first column
+        close_prices = close_prices.iloc[:, 0] if len(close_prices.columns) > 0 else close_prices
+    data.prices = [float(p) for p in close_prices.to_numpy()]
 
     return data

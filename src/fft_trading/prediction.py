@@ -6,8 +6,8 @@ from datetime import datetime
 import numpy as np
 from scipy.fft import fft, ifft
 
-from fft_trading.data_fetcher import StockData
-from fft_trading.fft_analysis import FFTResult
+from src.fft_trading.data_fetcher import StockData
+from src.fft_trading.fft_analysis import FFTResult
 
 
 @dataclass
