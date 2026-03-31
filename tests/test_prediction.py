@@ -2,8 +2,8 @@
 
 import pytest
 from datetime import datetime
-from fft_trading.prediction import prepare_train_test_split, predict_future, PredictionResult
-from fft_trading.data_fetcher import StockData
+from src.fft_trading.prediction import prepare_train_test_split, predict_future, PredictionResult
+from src.fft_trading.data_fetcher import StockData
 
 
 class TestPrepareTrainTestSplit:

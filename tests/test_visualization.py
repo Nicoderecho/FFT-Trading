@@ -2,8 +2,8 @@
 
 import pytest
 import os
-from fft_trading.visualization import create_prediction_plot, create_fft_plot
-from fft_trading.data_fetcher import StockData
+from src.fft_trading.visualization import create_prediction_plot, create_fft_plot
+from src.fft_trading.data_fetcher import StockData
 
 
 class TestCreatePredictionPlot:

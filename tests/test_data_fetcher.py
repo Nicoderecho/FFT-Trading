@@ -1,7 +1,7 @@
 """Tests for stock data fetching module."""
 
 import pytest
-from fft_trading.data_fetcher import fetch_stock_data, StockData
+from src.fft_trading.data_fetcher import fetch_stock_data, StockData
 
 
 class TestFetchStockData:

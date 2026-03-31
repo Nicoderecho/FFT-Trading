@@ -2,7 +2,7 @@
 
 import pytest
 import numpy as np
-from fft_trading.fft_analysis import analyze_fft, reconstruct_signal, FFTResult
+from src.fft_trading.fft_analysis import analyze_fft, reconstruct_signal, FFTResult
 
 
 class TestAnalyzeFFT:
