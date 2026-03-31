@@ -13,22 +13,24 @@ from src.fft_trading.visualization import create_prediction_plot, create_fft_plo
 
 def run_pipeline(
     ticker: str,
-    start_date: str,
-    end_date: str,
-    train_end_date: str,
+    start_date: Optional[str],
+    end_date: Optional[str],
+    train_end_date: Optional[str],
     prediction_days: int,
-    output_dir: str = "outputs"
+    output_dir: str = "outputs",
+    all_data: bool = False
 ) -> None:
     """
     Run the complete FFT trading pipeline for a single ticker.
 
     Args:
         ticker: Stock symbol (e.g., 'AAPL', '^GSPC')
-        start_date: Start date 'YYYY-MM-DD'
-        end_date: End date 'YYYY-MM-DD'
+        start_date: Start date 'YYYY-MM-DD' (ignored if all_data=True)
+        end_date: End date 'YYYY-MM-DD' (ignored if all_data=True)
         train_end_date: Train/test split date 'YYYY-MM-DD'
         prediction_days: Number of days to predict
         output_dir: Directory to save outputs
+        all_data: If True, fetch all available historical data
     """
     # Ensure output directory exists
     os.makedirs(output_dir, exist_ok=True)
@@ -39,7 +41,16 @@ def run_pipeline(
 
     # Step 1: Fetch data
     print(f"\n[1/5] Fetching data for {ticker}...")
-    stock_data = fetch_stock_data(ticker, start_date, end_date)
+
+    # If all_data is True, fetch maximum available history
+    if all_data:
+        # Use very old start date to get all available data
+        data_start = "2000-01-01"
+        data_end = datetime.now().strftime("%Y-%m-%d")
+        print(f"      Fetching all available data (max range: {data_start} to {data_end})")
+        stock_data = fetch_stock_data(ticker, data_start, data_end)
+    else:
+        stock_data = fetch_stock_data(ticker, start_date, end_date)
     print(f"      Retrieved {len(stock_data.dates)} data points")
     print(f"      Range: {stock_data.dates[0]} to {stock_data.dates[-1]}")
     print(f"      Price range: ${float(min(stock_data.prices)):.2f} - ${float(max(stock_data.prices)):.2f}")
@@ -177,13 +188,25 @@ Examples:
         default='outputs',
         help='Output directory for results (default: outputs)'
     )
+    parser.add_argument(
+        '--all-data', '-a',
+        action='store_true',
+        help='Fetch all available historical data (ignores --start and --end)'
+    )
 
     args = parser.parse_args()
 
-    # Validate train_end is between start and end
-    if not (args.start <= args.train_end <= args.end):
-        print(f"Error: --train-end must be between --start and --end")
-        return
+    # Skip date validation if using all available data
+    if not args.all_data:
+        # Validate train_end is between start and end
+        if not (args.start <= args.train_end <= args.end):
+            print(f"Error: --train-end must be between --start and --end")
+            return
+    else:
+        # When using all data, set train_end relative to the fetched data
+        # Default: use 80% for training if not specified
+        if args.train_end == '2025-10-01':  # default value
+            print(f"Note: Using default train-end date. Consider setting --train-end appropriately for your data range.")
 
     # Run pipeline for each ticker
     for ticker in args.tickers:
@@ -194,7 +217,8 @@ Examples:
                 end_date=args.end,
                 train_end_date=args.train_end,
                 prediction_days=args.prediction_days,
-                output_dir=args.output_dir
+                output_dir=args.output_dir,
+                all_data=args.all_data
             )
         except Exception as e:
             print(f"\nError processing {ticker}: {e}\n")

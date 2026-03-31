@@ -83,40 +83,33 @@ def predict_future(
     # Compute FFT
     fft_coeffs = fft(prices_array)
 
-    # Get dominant frequencies (sorted by amplitude)
-    amplitudes = np.abs(fft_coeffs)
-    phases = np.angle(fft_coeffs)
+    # Get frequencies
     frequencies = np.fft.fftfreq(n)
 
-    # Find dominant components (excluding DC)
+    # Find dominant components (excluding DC and negative frequencies)
+    amplitudes = np.abs(fft_coeffs)
     sorted_indices = np.argsort(amplitudes)[::-1]
 
-    # Keep top components for prediction
+    # Keep top components for reconstruction
     n_components = min(n // 2, 5)
-    dominant_indices = []
+    dominant_indices = [0]  # Always include DC component
     for idx in sorted_indices:
         if idx == 0:
             continue
         if frequencies[idx] < 0:
             continue
         dominant_indices.append(idx)
-        if len(dominant_indices) >= n_components:
+        if len(dominant_indices) >= n_components + 1:
             break
 
-    # Reconstruct using dominant frequencies and extrapolate
-    # For prediction, we extend the signal using the learned frequencies
+    # Extrapolate by evaluating Fourier series at future time points
+    # Formula: x[t] = (1/n) * sum_k X[k] * exp(2*pi*i*k*t/n)
     reconstructed = []
-    for t in range(prediction_days):
+    for t in range(n, n + prediction_days):
         value = 0.0
-        # DC component
-        value += np.abs(fft_coeffs[0])
-        # Add sinusoidal components
         for idx in dominant_indices:
-            freq = frequencies[idx]
-            amp = amplitudes[idx] / n  # Normalize
-            phase = phases[idx]
-            value += amp * np.cos(2 * np.pi * freq * (n + t) + phase) * 2
-
-        reconstructed.append(value)
+            coeff = fft_coeffs[idx]
+            value += coeff * np.exp(2j * np.pi * idx * t / n)
+        reconstructed.append(np.real(value / n))  # Critical: divide by n
 
     return reconstructed

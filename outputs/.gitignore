@@ -1,1 +1,4 @@
-# 
+# Ignore all files in the outputs directory
+# These are generated locally and should not be committed
+*
+!.gitignore
