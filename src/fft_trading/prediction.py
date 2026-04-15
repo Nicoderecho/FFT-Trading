@@ -65,6 +65,46 @@ def extract_linear_trend(prices: List[float]) -> TrendResult:
     )
 
 
+def extract_log_trend(prices: List[float]) -> TrendResult:
+    """
+    Extract log-linear (exponential) trend from price series.
+
+    Fits: log(price[t]) = a + b*t  →  price[t] ≈ exp(a + b*t)
+
+    This is the correct model for inflationary/compounding markets because:
+    - Stock prices grow multiplicatively, not additively
+    - Log-residuals are stationary (constant variance) — ideal for FFT
+    - Equivalent to modeling log-returns as a constant drift
+
+    Args:
+        prices: Price series (must be positive)
+
+    Returns:
+        TrendResult where:
+        - trend: exp(a + b*t) in price-space (for visualization)
+        - detrended: log(price[t]) - (a + b*t)  ← stationary, passed to FFT
+        - params: slope b and intercept a in log-space
+    """
+    n = len(prices)
+    x = np.arange(n)
+    log_y = np.log(np.array(prices, dtype=float))
+
+    # Linear fit in log-space: log(price) = a + b*t
+    A = np.vstack([x, np.ones(n)]).T
+    b, a = np.linalg.lstsq(A, log_y, rcond=None)[0]
+
+    log_trend = a + b * x
+    trend = np.exp(log_trend).tolist()
+    detrended = (log_y - log_trend).tolist()  # log-residuals for FFT
+
+    return TrendResult(
+        trend=trend,
+        detrended=detrended,
+        trend_type='log',
+        params={'slope': float(b), 'intercept': float(a), 'space': 'log'}
+    )
+
+
 def extract_polynomial_trend(prices: List[float], degree: int = 2) -> TrendResult:
     """
     Extract polynomial trend from price series.
@@ -111,7 +151,12 @@ def extrapolate_trend(trend_result: TrendResult, n_future: int) -> List[float]:
     n_original = len(trend_result.trend)
     future_x = np.arange(n_original, n_original + n_future)
 
-    if trend_result.trend_type == 'linear':
+    if trend_result.trend_type == 'log':
+        slope = trend_result.params['slope']
+        intercept = trend_result.params['intercept']
+        return np.exp(intercept + slope * future_x).tolist()
+
+    elif trend_result.trend_type == 'linear':
         slope = trend_result.params['slope']
         intercept = trend_result.params['intercept']
         return (intercept + slope * future_x).tolist()
@@ -131,7 +176,7 @@ def predict_future_with_trend(
     train_prices: List[float],
     prediction_days: int,
     n_components: int = 5,
-    trend_type: str = 'linear'
+    trend_type: str = 'log'
 ) -> Tuple[List[float], dict]:
     """
     Predict future prices using FFT with trend component.
@@ -142,11 +187,14 @@ def predict_future_with_trend(
     3. Extrapolate both trend and cycles
     4. Combine: prediction = trend_extrapolation + cycle_forecast
 
+    For 'log' trend (default, recommended for inflationary markets):
+    - Detrend in log-space → FFT on log-residuals → exp(cycle + log_trend)
+
     Args:
         train_prices: Historical prices for training
         prediction_days: Number of days to predict
         n_components: Number of FFT components to use
-        trend_type: 'linear', 'polynomial_2', 'polynomial_3', or 'none'
+        trend_type: 'log' (default), 'linear', 'polynomial_2', 'polynomial_3', or 'none'
 
     Returns:
         Tuple of (predicted_prices, metadata_dict)
@@ -162,10 +210,12 @@ def predict_future_with_trend(
             trend_type='none',
             params={}
         )
+    elif trend_type == 'log':
+        trend_result = extract_log_trend(train_prices)
     elif trend_type.startswith('polynomial'):
         degree = int(trend_type.split('_')[1]) if '_' in trend_type else 2
         trend_result = extract_polynomial_trend(train_prices, degree)
-    else:  # linear default
+    else:  # linear
         trend_result = extract_linear_trend(train_prices)
 
     # Step 2: FFT on detrended series
@@ -203,7 +253,17 @@ def predict_future_with_trend(
     trend_forecast = extrapolate_trend(trend_result, prediction_days)
 
     # Step 6: Combine
-    predicted = [c + t for c, t in zip(cycle_forecast, trend_forecast)]
+    # For log-trend: cycle_forecast is in log-space → exp(log_cycle + log_trend)
+    # For all others: additive combination in price-space
+    if trend_result.trend_type == 'log':
+        # trend_forecast is already in price-space (exp(...)), so we need log
+        log_trend_forecast = [
+            trend_result.params['intercept'] + trend_result.params['slope'] * (n + t)
+            for t in range(prediction_days)
+        ]
+        predicted = [np.exp(c + lt) for c, lt in zip(cycle_forecast, log_trend_forecast)]
+    else:
+        predicted = [c + t for c, t in zip(cycle_forecast, trend_forecast)]
 
     # Metadata for analysis
     metadata = {

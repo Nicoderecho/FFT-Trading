@@ -7,7 +7,7 @@ from datetime import datetime, timedelta
 
 from .data_fetcher import fetch_stock_data, StockData
 from .fft_analysis import analyze_fft, FFTResult
-from .prediction import predict_future
+from .prediction import predict_future_with_trend
 from .metrics import (
     compute_sharpe_ratio,
     compute_max_drawdown,
@@ -59,7 +59,8 @@ def run_backtest(
     hold_period: int = 5,
     initial_capital: float = 10000,
     transaction_cost: float = 0.001,
-    slippage: float = 0.0005
+    slippage: float = 0.0005,
+    trend_type: str = 'log'
 ) -> BacktestResult:
     """
     Run FFT-based trading strategy backtest.
@@ -108,7 +109,7 @@ def run_backtest(
         train_prices = prices[window_start:window_end]
 
         # Predict next hold_period days
-        predicted = predict_future(train_prices, hold_period)
+        predicted, _ = predict_future_with_trend(train_prices, hold_period, trend_type=trend_type)
 
         # Calculate forecast slope
         if len(predicted) < 2:
@@ -213,9 +214,10 @@ def walk_forward_analysis(
     ticker: str,
     start_date: str,
     end_date: str,
-    window_size: int = 250,
+    window_size: int = 500,
     step_size: int = 20,
-    forecast_horizon: int = 10
+    forecast_horizon: int = 10,
+    trend_type: str = 'log'
 ) -> Dict[str, List[float]]:
     """
     Perform walk-forward analysis to evaluate FFT prediction stability.
@@ -259,7 +261,7 @@ def walk_forward_analysis(
         train_prices = prices[window_start:window_end]
 
         # Predict
-        predicted = predict_future(train_prices, forecast_horizon)
+        predicted, _ = predict_future_with_trend(train_prices, forecast_horizon, trend_type=trend_type)
 
         # Actual prices for forecast period
         actual_end = min(window_end + forecast_horizon, len(prices))

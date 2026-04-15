@@ -306,7 +306,8 @@ def run_backtest_cli(
     output_dir: str,
     prediction_window: int = 30,
     hold_period: int = 5,
-    initial_capital: float = 10000
+    initial_capital: float = 10000,
+    trend_type: str = 'log'
 ) -> None:
     """
     Run backtest for a single ticker.
@@ -330,7 +331,8 @@ def run_backtest_cli(
         end_date=end_date,
         prediction_window=prediction_window,
         hold_period=hold_period,
-        initial_capital=initial_capital
+        initial_capital=initial_capital,
+        trend_type=trend_type
     )
 
     # Print report
@@ -406,20 +408,20 @@ Examples:
     parser.add_argument(
         '--start',
         type=parse_date,
-        default='2025-01-01',
-        help='Start date YYYY-MM-DD (default: 2025-01-01)'
+        default='2020-01-01',
+        help='Start date YYYY-MM-DD (default: 2020-01-01)'
     )
     parser.add_argument(
         '--end',
         type=parse_date,
-        default='2025-12-01',
-        help='End date YYYY-MM-DD (default: 2025-12-01)'
+        default='2026-04-01',
+        help='End date YYYY-MM-DD (default: 2026-04-01)'
     )
     parser.add_argument(
         '--train-end',
         type=parse_date,
-        default='2025-10-01',
-        help='Train/test split date YYYY-MM-DD (default: 2025-10-01)'
+        default='2024-01-01',
+        help='Train/test split date YYYY-MM-DD (default: 2024-01-01)'
     )
 
     # Prediction options
@@ -466,9 +468,9 @@ Examples:
     parser.add_argument(
         '--trend-type',
         type=str,
-        choices=['none', 'linear', 'polynomial_2', 'polynomial_3'],
-        default='linear',
-        help='Trend extraction type: none (pure FFT), linear (default), polynomial_2, polynomial_3'
+        choices=['none', 'log', 'linear', 'polynomial_2', 'polynomial_3'],
+        default='log',
+        help='Trend extraction type: log (default, for inflationary markets), linear, polynomial_2, polynomial_3, none'
     )
 
     # Output options
@@ -536,7 +538,8 @@ Examples:
                     output_dir=args.output_dir,
                     prediction_window=args.prediction_window,
                     hold_period=args.hold_period,
-                    initial_capital=args.initial_capital
+                    initial_capital=args.initial_capital,
+                    trend_type=args.trend_type
                 )
             except Exception as e:
                 print(f"\nError backtesting {ticker}: {e}\n")
