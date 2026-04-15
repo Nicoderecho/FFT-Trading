@@ -81,6 +81,7 @@ from .backtest import (
 
 # Visualization
 from .visualization import (
+    create_dashboard,
     create_prediction_plot,
     create_fft_plot,
     create_reconstruction_plot,

@@ -9,6 +9,7 @@ from src.fft_trading.data_fetcher import fetch_stock_data, StockData
 from src.fft_trading.fft_analysis import analyze_fft, reconstruct_signal, FFTResult
 from src.fft_trading.prediction import prepare_train_test_split, predict_future, predict_future_with_trend, reconstruct_training_fit, PredictionResult
 from src.fft_trading.visualization import (
+    create_dashboard,
     create_prediction_plot,
     create_fft_plot,
     create_reconstruction_plot,
@@ -155,15 +156,13 @@ def run_pipeline(
     prediction_result.fft_result = fft_result
     prediction_result.predicted_prices = predicted_prices
 
-    # Step 5: Generate visualizations
-    print(f"\n[5/6] Generating visualizations...")
+    # Step 5: Evaluate + visualize
+    print(f"\n[5/6] Evaluating and generating dashboard...")
 
-    # Prediction plot
-    pred_plot_path = os.path.join(output_dir, f"{ticker}_prediction.html")
     train_end_idx = stock_data.dates.index(train_end_date) if train_end_date in stock_data.dates else None
+    test_predicted = predicted_prices[:len(prediction_result.test_dates)]
 
-    # Reconstruct model fit over training period so the chart shows a
-    # continuous model line: green dotted (train fit) + red dashed (test prediction)
+    # In-sample FFT fit for full prediction line
     train_fit = None
     if not use_soft_projection and trend_type != "none" and train_end_idx is not None:
         train_fit = reconstruct_training_fit(
@@ -172,18 +171,21 @@ def run_pipeline(
             trend_type=trend_type
         )
 
-    create_prediction_plot(
-        stock_data,
-        predicted_prices,
-        output_path=pred_plot_path,
-        train_end_idx=train_end_idx,
-        train_fit=train_fit
-    )
-    print(f"      Prediction plot: {pred_plot_path}")
+    # Evaluate metrics before building dashboard
+    metrics = None
+    if len(prediction_result.test_prices) > 0 and len(test_predicted) > 0:
+        metrics = evaluate_prediction(prediction_result)
+        print(f"      Evaluation Metrics:")
+        for metric, value in metrics.items():
+            print(f"        {metric}: {value}")
+        logger.info(f"Evaluation metrics: {metrics}")
 
-    # FFT spectrum plot with power spectrum
-    fft_plot_path = os.path.join(output_dir, f"{ticker}_fft_spectrum.html")
-    # Convert FrequencySpectrum dataclass to dict for visualization
+    # Optional reconstruction
+    reconstruction = None
+    if reconstruct:
+        reconstruction = reconstruct_signal_from_top_frequencies(fft_result, n_components)
+
+    # Convert FrequencySpectrum dataclass to dict
     spectral_dict = {
         'periods': spectral_data.periods,
         'power': spectral_data.power,
@@ -191,46 +193,29 @@ def run_pipeline(
         'amplitudes': spectral_data.amplitudes,
         'phases': spectral_data.phases
     }
-    create_spectrum_plot(spectral_dict, dominant_cycles, output_path=fft_plot_path, ticker=ticker)
-    print(f"      FFT spectrum (power): {fft_plot_path}")
 
-    # Reconstruction plot (optional)
-    if reconstruct:
-        print(f"      [Extra] Generating reconstruction plot...")
-        reconstruction = reconstruct_signal_from_top_frequencies(fft_result, n_components)
-        recon_plot_path = os.path.join(output_dir, f"{ticker}_reconstruction.html")
-        create_reconstruction_plot(
-            stock_data.dates,
-            stock_data.prices,
-            reconstruction,
-            output_path=recon_plot_path,
-            ticker=ticker
-        )
-        print(f"      Reconstruction plot: {recon_plot_path}")
+    # Single dashboard HTML
+    dashboard_path = os.path.join(output_dir, f"{ticker}_dashboard.html")
+    create_dashboard(
+        stock_data=stock_data,
+        predicted_prices=predicted_prices,
+        train_end_idx=train_end_idx,
+        spectral_data=spectral_dict,
+        dominant_cycles=dominant_cycles,
+        output_path=dashboard_path,
+        train_fit=train_fit,
+        metrics=metrics,
+        reconstruction=reconstruction,
+        trend_info=prediction_result.trend_info,
+    )
+    print(f"      Dashboard: {dashboard_path}")
+    logger.info(f"Dashboard saved: {dashboard_path}")
 
-        # Forecast plot with confidence band
-        if use_soft_projection:
-            forecast_plot_path = os.path.join(output_dir, f"{ticker}_forecast.html")
-            forecast_data = {
-                'forecast_signal': projection['forecast'],
-                'confidence_band': projection['confidence_band'],
-                'confidence_score': projection['confidence_score']
-            }
-            create_forecast_plot(
-                stock_data.dates,
-                stock_data.prices,
-                forecast_data,
-                output_path=forecast_plot_path,
-                ticker=ticker
-            )
-            print(f"      Forecast plot: {forecast_plot_path}")
-
-    # Step 6: Save outputs and evaluate
-    print(f"\n[6/6] Saving outputs and evaluating...")
+    # Step 6: Save data outputs
+    print(f"\n[6/6] Saving data outputs...")
 
     # Save predictions to CSV
     csv_path = os.path.join(output_dir, f"{ticker}_predictions.csv")
-    test_predicted = predicted_prices[:len(prediction_result.test_dates)]
     export_predictions_csv(
         csv_path,
         prediction_result.test_dates,
@@ -261,19 +246,6 @@ def run_pipeline(
         save_predictions_sqlite(db_path, ticker, predictions_list)
         print(f"      Saved to database: {db_path}")
         logger.info(f"Saved predictions to database: {db_path}")
-
-    # Evaluate prediction quality
-    if len(prediction_result.test_prices) > 0 and len(test_predicted) > 0:
-        print(f"\n      Evaluation Metrics:")
-        metrics = evaluate_prediction(prediction_result)
-        for metric, value in metrics.items():
-            print(f"        {metric}: {value}")
-        logger.info(f"Evaluation metrics: {metrics}")
-
-        # Save metrics summary
-        metrics_path = os.path.join(output_dir, f"{ticker}_metrics.html")
-        create_metrics_summary_table(metrics, output_path=metrics_path, ticker=ticker)
-        print(f"      Metrics summary: {metrics_path}")
 
     print(f"\n{'='*60}")
     print(f"Pipeline completed for {ticker}!")
