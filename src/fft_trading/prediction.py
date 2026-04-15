@@ -277,6 +277,85 @@ def predict_future_with_trend(
     return predicted, metadata
 
 
+def reconstruct_training_fit(
+    train_prices: List[float],
+    n_components: int = 5,
+    trend_type: str = 'log'
+) -> List[float]:
+    """
+    Return the FFT model's in-sample fit over the training period.
+
+    Evaluates the same Fourier components used for forecasting at time
+    points t = 0..n-1, giving a "what the model learned" curve that can
+    be plotted alongside the real prices and the future prediction to
+    form one continuous model line across the full time range.
+
+    Args:
+        train_prices: Historical prices used for training
+        n_components: Number of FFT components (must match predict call)
+        trend_type: Trend type (must match predict call)
+
+    Returns:
+        List of reconstructed prices over the training period
+    """
+    n = len(train_prices)
+    prices_array = np.array(train_prices)
+
+    # Extract trend (same logic as predict_future_with_trend)
+    if trend_type == 'none':
+        trend_result = TrendResult(
+            trend=[0.0] * n,
+            detrended=prices_array.tolist(),
+            trend_type='none',
+            params={}
+        )
+    elif trend_type == 'log':
+        trend_result = extract_log_trend(train_prices)
+    elif trend_type.startswith('polynomial'):
+        degree = int(trend_type.split('_')[1]) if '_' in trend_type else 2
+        trend_result = extract_polynomial_trend(train_prices, degree)
+    else:
+        trend_result = extract_linear_trend(train_prices)
+
+    # FFT on detrended series
+    detrended_array = np.array(trend_result.detrended)
+    fft_coeffs = fft(detrended_array)
+    frequencies = np.fft.fftfreq(n)
+
+    # Same dominant component selection as in predict_future_with_trend
+    amplitudes = np.abs(fft_coeffs)
+    sorted_indices = np.argsort(amplitudes)[::-1]
+    n_keep = min(n // 2, n_components)
+    dominant_indices = []
+    for idx in sorted_indices:
+        if frequencies[idx] < 0:
+            continue
+        dominant_indices.append(idx)
+        if len(dominant_indices) >= n_keep:
+            break
+    if not dominant_indices:
+        dominant_indices = [0]
+
+    # Evaluate Fourier series at training time points t = 0..n-1
+    cycle_fit = []
+    for t in range(n):
+        value = 0.0
+        for idx in dominant_indices:
+            coeff = fft_coeffs[idx]
+            value += coeff * np.exp(2j * np.pi * idx * t / n)
+        cycle_fit.append(np.real(value / n))
+
+    # Recombine with trend (same logic as predict_future_with_trend)
+    if trend_result.trend_type == 'log':
+        log_trend = [
+            trend_result.params['intercept'] + trend_result.params['slope'] * t
+            for t in range(n)
+        ]
+        return [np.exp(c + lt) for c, lt in zip(cycle_fit, log_trend)]
+    else:
+        return [c + tr for c, tr in zip(cycle_fit, trend_result.trend)]
+
+
 def predict_future(
     train_prices: List[float],
     prediction_days: int,

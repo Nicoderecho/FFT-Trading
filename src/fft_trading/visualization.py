@@ -11,16 +11,20 @@ def create_prediction_plot(
     stock_data,
     predicted_prices: List[float],
     output_path: str = "prediction_plot.html",
-    train_end_idx: Optional[int] = None
+    train_end_idx: Optional[int] = None,
+    train_fit: Optional[List[float]] = None
 ) -> None:
     """
     Create interactive plot comparing real vs predicted prices.
 
     Args:
         stock_data: StockData object with dates and prices
-        predicted_prices: Predicted prices (for test period or future)
+        predicted_prices: Predicted prices (for test period)
         output_path: Path to save HTML file
         train_end_idx: Index where train/test split occurs
+        train_fit: Optional FFT model fit over the training period.
+                   When provided, draws a continuous model line across
+                   train + test spanning the full time range.
     """
     dates = stock_data.dates
     real_prices = stock_data.prices
@@ -37,26 +41,54 @@ def create_prediction_plot(
         go.Scatter(
             x=dates,
             y=real_prices,
-            mode='lines+markers',
+            mode='lines',
             name='Real Price',
             line=dict(color='blue', width=2)
         )
     )
 
-    # Plot predicted prices - align with test period at end of real prices
-    pred_dates = dates[-len(predicted_prices):]
+    # Build the full model line: train fit + test prediction concatenated
+    if train_fit is not None and train_end_idx is not None:
+        # Training segment: model fit over dates[0..train_end_idx]
+        train_dates = dates[:train_end_idx + 1]
+        fit_segment = train_fit[:len(train_dates)]
 
-    fig.add_trace(
-        go.Scatter(
-            x=pred_dates,
-            y=predicted_prices,
-            mode='lines+markers',
-            name='Predicted',
-            line=dict(color='red', width=2, dash='dash')
+        fig.add_trace(
+            go.Scatter(
+                x=train_dates,
+                y=fit_segment,
+                mode='lines',
+                name='FFT Model (train fit)',
+                line=dict(color='green', width=1.5, dash='dot'),
+                opacity=0.8
+            )
         )
-    )
 
-    # Add vertical line for train/test split if provided
+        # Test / prediction segment: dates after split
+        pred_dates = dates[train_end_idx + 1: train_end_idx + 1 + len(predicted_prices)]
+        fig.add_trace(
+            go.Scatter(
+                x=pred_dates,
+                y=predicted_prices[:len(pred_dates)],
+                mode='lines',
+                name='FFT Prediction (test)',
+                line=dict(color='red', width=2, dash='dash')
+            )
+        )
+    else:
+        # Fallback: align prediction with last N dates as before
+        pred_dates = dates[-len(predicted_prices):]
+        fig.add_trace(
+            go.Scatter(
+                x=pred_dates,
+                y=predicted_prices,
+                mode='lines',
+                name='Predicted',
+                line=dict(color='red', width=2, dash='dash')
+            )
+        )
+
+    # Vertical line and annotation for train/test split
     if train_end_idx is not None:
         fig.add_shape(
             type='line',

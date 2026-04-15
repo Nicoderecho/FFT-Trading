@@ -50,7 +50,7 @@ from .reconstruction import (
 )
 
 # Prediction
-from .prediction import predict_future, PredictionResult, prepare_train_test_split
+from .prediction import predict_future, predict_future_with_trend, reconstruct_training_fit, PredictionResult, prepare_train_test_split
 
 # Metrics & Evaluation
 from .metrics import (

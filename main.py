@@ -7,7 +7,7 @@ from typing import List, Optional
 
 from src.fft_trading.data_fetcher import fetch_stock_data, StockData
 from src.fft_trading.fft_analysis import analyze_fft, reconstruct_signal, FFTResult
-from src.fft_trading.prediction import prepare_train_test_split, predict_future, predict_future_with_trend, PredictionResult
+from src.fft_trading.prediction import prepare_train_test_split, predict_future, predict_future_with_trend, reconstruct_training_fit, PredictionResult
 from src.fft_trading.visualization import (
     create_prediction_plot,
     create_fft_plot,
@@ -161,11 +161,23 @@ def run_pipeline(
     # Prediction plot
     pred_plot_path = os.path.join(output_dir, f"{ticker}_prediction.html")
     train_end_idx = stock_data.dates.index(train_end_date) if train_end_date in stock_data.dates else None
+
+    # Reconstruct model fit over training period so the chart shows a
+    # continuous model line: green dotted (train fit) + red dashed (test prediction)
+    train_fit = None
+    if not use_soft_projection and trend_type != "none" and train_end_idx is not None:
+        train_fit = reconstruct_training_fit(
+            prediction_result.train_prices,
+            n_components=n_components,
+            trend_type=trend_type
+        )
+
     create_prediction_plot(
         stock_data,
         predicted_prices,
         output_path=pred_plot_path,
-        train_end_idx=train_end_idx
+        train_end_idx=train_end_idx,
+        train_fit=train_fit
     )
     print(f"      Prediction plot: {pred_plot_path}")
 
