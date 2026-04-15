@@ -7,7 +7,7 @@ from typing import List, Optional
 
 from src.fft_trading.data_fetcher import fetch_stock_data, StockData
 from src.fft_trading.fft_analysis import analyze_fft, reconstruct_signal, FFTResult
-from src.fft_trading.prediction import prepare_train_test_split, predict_future, PredictionResult
+from src.fft_trading.prediction import prepare_train_test_split, predict_future, predict_future_with_trend, PredictionResult
 from src.fft_trading.visualization import (
     create_prediction_plot,
     create_fft_plot,
@@ -37,7 +37,8 @@ def run_pipeline(
     forecast_horizon: int = 30,
     use_soft_projection: bool = False,
     save_to_db: bool = False,
-    db_path: Optional[str] = None
+    db_path: Optional[str] = None,
+    trend_type: str = "linear"
 ) -> None:
     """
     Run the complete FFT trading pipeline for a single ticker.
@@ -56,6 +57,7 @@ def run_pipeline(
         use_soft_projection: If True, use soft projection with confidence bands
         save_to_db: If True, save predictions to SQLite database
         db_path: Path to SQLite database (default: outputs/predictions.db)
+        trend_type: Trend extraction type ('none', 'linear', 'polynomial_2', 'polynomial_3')
     """
     # Initialize logger
     logger = get_pipeline_logger(os.path.join(output_dir, "pipeline.log"))
@@ -113,13 +115,15 @@ def run_pipeline(
     print(f"      Test samples: {len(prediction_result.test_prices)}")
 
     # Step 4: Predict future prices
-    print(f"\n[4/6] Predicting {prediction_days} days...")
+    test_days = len(prediction_result.test_dates)
+    predict_days = test_days if test_days > 0 else prediction_days
+    print(f"\n[4/6] Predicting {predict_days} days (test period)...")
 
     if use_soft_projection:
         # Use soft projection with confidence bands
         projection = soft_projection(
             prediction_result.train_prices,
-            forecast_horizon=prediction_days,
+            forecast_horizon=predict_days,
             n_components=n_components
         )
         predicted_prices = projection['forecast']
@@ -127,11 +131,25 @@ def run_pipeline(
         print(f"      Predicted range: ${min(predicted_prices):.2f} - ${max(predicted_prices):.2f}")
         print(f"      Confidence score: {confidence_score:.0%}")
         logger.info(f"Soft projection: confidence={confidence_score:.0%}, range=${min(predicted_prices):.2f}-${max(predicted_prices):.2f}")
-    else:
-        predicted_prices = predict_future(prediction_result.train_prices, prediction_days)
+    elif trend_type != "none":
+        # Use FFT with trend component (crucial for inflationary markets)
+        predicted_prices, trend_metadata = predict_future_with_trend(
+            prediction_result.train_prices,
+            predict_days,
+            n_components=n_components,
+            trend_type=trend_type
+        )
         confidence_score = None
         print(f"      Predicted range: ${min(predicted_prices):.2f} - ${max(predicted_prices):.2f}")
-        logger.info(f"FFT prediction: range=${min(predicted_prices):.2f}-${max(predicted_prices):.2f}")
+        print(f"      Trend type: {trend_metadata['trend_type']}")
+        print(f"      Trend slope: {trend_metadata['trend_params'].get('slope', 'N/A'):.4f}")
+        logger.info(f"FFT with {trend_type} trend: range=${min(predicted_prices):.2f}-${max(predicted_prices):.2f}, slope={trend_metadata['trend_params'].get('slope', 0):.4f}")
+        prediction_result.trend_info = trend_metadata
+    else:
+        predicted_prices = predict_future(prediction_result.train_prices, predict_days, n_components=n_components)
+        confidence_score = None
+        print(f"      Predicted range: ${min(predicted_prices):.2f} - ${max(predicted_prices):.2f}")
+        logger.info(f"FFT prediction (no trend): range=${min(predicted_prices):.2f}-${max(predicted_prices):.2f}")
 
     # Attach results to prediction_result for visualization
     prediction_result.fft_result = fft_result
@@ -153,7 +171,15 @@ def run_pipeline(
 
     # FFT spectrum plot with power spectrum
     fft_plot_path = os.path.join(output_dir, f"{ticker}_fft_spectrum.html")
-    create_spectrum_plot(spectral_data, dominant_cycles, output_path=fft_plot_path, ticker=ticker)
+    # Convert FrequencySpectrum dataclass to dict for visualization
+    spectral_dict = {
+        'periods': spectral_data.periods,
+        'power': spectral_data.power,
+        'frequencies': spectral_data.frequencies,
+        'amplitudes': spectral_data.amplitudes,
+        'phases': spectral_data.phases
+    }
+    create_spectrum_plot(spectral_dict, dominant_cycles, output_path=fft_plot_path, ticker=ticker)
     print(f"      FFT spectrum (power): {fft_plot_path}")
 
     # Reconstruction plot (optional)
@@ -437,6 +463,13 @@ Examples:
         action='store_true',
         help='Use soft projection with confidence bands'
     )
+    parser.add_argument(
+        '--trend-type',
+        type=str,
+        choices=['none', 'linear', 'polynomial_2', 'polynomial_3'],
+        default='linear',
+        help='Trend extraction type: none (pure FFT), linear (default), polynomial_2, polynomial_3'
+    )
 
     # Output options
     parser.add_argument(
@@ -524,7 +557,8 @@ Examples:
                     forecast_horizon=args.forecast_horizon,
                     use_soft_projection=args.soft_projection,
                     save_to_db=args.save_to_db,
-                    db_path=args.db_path
+                    db_path=args.db_path,
+                    trend_type=args.trend_type
                 )
             except Exception as e:
                 print(f"\nError processing {ticker}: {e}\n")

@@ -123,7 +123,7 @@ def compute_directional_accuracy(actual: List[float], predicted: List[float]) ->
 
     # Compute predicted direction changes
     if len(predicted_arr) >= len(actual_arr):
-        predicted_direction = np.diff(predicted_arr[:len(actual_arr)-1]) > 0
+        predicted_direction = np.diff(predicted_arr[:len(actual_arr)]) > 0
     else:
         # If predicted is shorter, compare what we can
         predicted_direction = np.diff(predicted_arr) > 0
