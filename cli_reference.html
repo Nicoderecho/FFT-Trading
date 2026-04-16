@@ -1,0 +1,925 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FFT-Trading CLI Reference</title>
+  <style>
+    :root {
+      --bg:        #0d1117;
+      --surface:   #161b22;
+      --surface2:  #21262d;
+      --border:    #30363d;
+      --accent:    #58a6ff;
+      --accent2:   #3fb950;
+      --warn:      #d29922;
+      --danger:    #f85149;
+      --purple:    #bc8cff;
+      --teal:      #39d353;
+      --text:      #c9d1d9;
+      --muted:     #8b949e;
+      --code-bg:   #0d1117;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      padding: 32px 24px;
+    }
+
+    /* ── Layout ── */
+    .page { max-width: 1100px; margin: 0 auto; }
+
+    /* ── Header ── */
+    .hero {
+      background: linear-gradient(135deg, #1a2332 0%, #0d1b2a 100%);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 40px 48px;
+      margin-bottom: 40px;
+    }
+    .hero h1 {
+      font-size: 2rem;
+      font-weight: 700;
+      color: var(--accent);
+      letter-spacing: -0.5px;
+    }
+    .hero .subtitle {
+      color: var(--muted);
+      margin-top: 8px;
+      font-size: 1rem;
+    }
+    .hero .base-cmd {
+      margin-top: 20px;
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px 20px;
+      font-family: 'Cascadia Code', 'Fira Code', 'SF Mono', monospace;
+      font-size: 0.9rem;
+      color: var(--accent2);
+    }
+
+    /* ── Section ── */
+    .section { margin-bottom: 44px; }
+    .section-title {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: var(--accent);
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .section-title .icon {
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.85rem;
+    }
+
+    /* ── Mode cards ── */
+    .mode-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 16px;
+    }
+    .mode-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 22px 24px;
+      position: relative;
+    }
+    .mode-card .badge {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      font-size: 0.65rem;
+      font-weight: 700;
+      padding: 3px 8px;
+      border-radius: 20px;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+    .badge-default  { background: #1f3a2a; color: var(--accent2); }
+    .badge-flag     { background: #1a2a3f; color: var(--accent); }
+    .badge-advanced { background: #2a1f3a; color: var(--purple); }
+
+    .mode-card h3 {
+      font-size: 0.95rem;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 8px;
+    }
+    .mode-card p {
+      font-size: 0.85rem;
+      color: var(--muted);
+      margin-bottom: 14px;
+    }
+    .mode-card code {
+      display: block;
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px 14px;
+      font-family: 'Cascadia Code', 'Fira Code', 'SF Mono', monospace;
+      font-size: 0.78rem;
+      color: var(--accent2);
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    /* ── Argument table ── */
+    .arg-table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      font-size: 0.85rem;
+    }
+    .arg-table thead tr {
+      background: var(--surface2);
+    }
+    .arg-table thead th {
+      padding: 10px 16px;
+      text-align: left;
+      color: var(--muted);
+      font-weight: 600;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      border-bottom: 1px solid var(--border);
+    }
+    .arg-table tbody tr {
+      border-bottom: 1px solid var(--border);
+      transition: background 0.15s;
+    }
+    .arg-table tbody tr:last-child { border-bottom: none; }
+    .arg-table tbody tr:hover { background: var(--surface2); }
+    .arg-table td {
+      padding: 11px 16px;
+      vertical-align: top;
+    }
+    .arg-table .flag {
+      font-family: 'Cascadia Code', 'Fira Code', 'SF Mono', monospace;
+      color: var(--accent);
+      font-size: 0.82rem;
+      white-space: nowrap;
+    }
+    .arg-table .type-pill {
+      display: inline-block;
+      font-size: 0.68rem;
+      font-weight: 600;
+      padding: 2px 7px;
+      border-radius: 10px;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+    .pill-str    { background: #1a2a3f; color: #79c0ff; }
+    .pill-int    { background: #1f3a2a; color: #56d364; }
+    .pill-float  { background: #2a1f3a; color: #d2a8ff; }
+    .pill-bool   { background: #2a1a1f; color: #ff7b72; }
+    .pill-date   { background: #2a2a1a; color: #e3b341; }
+
+    .arg-table .default-val {
+      font-family: 'Cascadia Code', 'Fira Code', 'SF Mono', monospace;
+      font-size: 0.78rem;
+      color: var(--muted);
+    }
+    .arg-table .desc { color: var(--text); }
+
+    /* ── Pipeline flow ── */
+    .pipeline {
+      display: flex;
+      gap: 0;
+      align-items: stretch;
+      flex-wrap: wrap;
+    }
+    .step {
+      flex: 1;
+      min-width: 130px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      padding: 16px 14px;
+      text-align: center;
+      position: relative;
+    }
+    .step:first-child { border-radius: 8px 0 0 8px; }
+    .step:last-child  { border-radius: 0 8px 8px 0; }
+    .step:not(:last-child)::after {
+      content: '→';
+      position: absolute;
+      right: -14px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--accent);
+      font-size: 1.1rem;
+      z-index: 1;
+    }
+    .step .step-num {
+      font-size: 0.7rem;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+    .step .step-name {
+      font-weight: 600;
+      font-size: 0.82rem;
+      color: var(--text);
+    }
+    .step .step-note {
+      font-size: 0.7rem;
+      color: var(--muted);
+      margin-top: 4px;
+    }
+    .step.optional {
+      border-style: dashed;
+      border-color: var(--warn);
+    }
+    .step.optional .step-name { color: var(--warn); }
+
+    /* ── Examples ── */
+    .example-grid { display: grid; grid-template-columns: 1fr; gap: 16px; }
+    .example-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--accent);
+      border-radius: 8px;
+      padding: 18px 22px;
+    }
+    .example-card.advanced { border-left-color: var(--purple); }
+    .example-card.backtest { border-left-color: var(--warn); }
+    .example-card.bench    { border-left-color: var(--teal); }
+
+    .example-card .ex-label {
+      font-size: 0.72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+    .example-card h4 {
+      font-size: 0.9rem;
+      color: var(--text);
+      margin-bottom: 10px;
+    }
+    .example-card code {
+      display: block;
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 12px 16px;
+      font-family: 'Cascadia Code', 'Fira Code', 'SF Mono', monospace;
+      font-size: 0.8rem;
+      color: var(--accent2);
+      white-space: pre-wrap;
+      margin-bottom: 10px;
+    }
+    .example-card .ex-desc {
+      font-size: 0.82rem;
+      color: var(--muted);
+    }
+    .example-card .flag-ref {
+      display: inline-block;
+      font-family: monospace;
+      font-size: 0.75rem;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 1px 6px;
+      color: var(--accent);
+    }
+
+    /* ── Choices list ── */
+    .choices {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 4px;
+    }
+    .choice {
+      font-family: monospace;
+      font-size: 0.75rem;
+      padding: 2px 8px;
+      border-radius: 4px;
+      border: 1px solid var(--border);
+      background: var(--surface2);
+      color: var(--text);
+    }
+    .choice.highlight { border-color: var(--accent); color: var(--accent); }
+
+    /* ── Outputs table ── */
+    .outputs-table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      font-size: 0.84rem;
+    }
+    .outputs-table td, .outputs-table th {
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border);
+      text-align: left;
+    }
+    .outputs-table thead th {
+      background: var(--surface2);
+      color: var(--muted);
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      font-weight: 600;
+    }
+    .outputs-table tbody tr:hover { background: var(--surface2); }
+    .outputs-table .file {
+      font-family: monospace;
+      font-size: 0.78rem;
+      color: var(--warn);
+    }
+
+    /* ── Scroll wrapper ── */
+    .scroll { overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; }
+
+    /* ── Footer ── */
+    .footer {
+      margin-top: 48px;
+      padding-top: 20px;
+      border-top: 1px solid var(--border);
+      font-size: 0.78rem;
+      color: var(--muted);
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+<div class="page">
+
+  <!-- ══ HERO ══════════════════════════════════════════════════════════ -->
+  <div class="hero">
+    <h1>FFT-Trading CLI Reference</h1>
+    <div class="subtitle">Complete command reference for <code style="color:var(--accent2)">main.py</code> — Fetch · Analyze · Predict · Visualize</div>
+    <div class="base-cmd">python main.py &lt;TICKER [TICKER ...]&gt; [OPTIONS]</div>
+  </div>
+
+
+  <!-- ══ PIPELINE FLOW ═════════════════════════════════════════════════ -->
+  <div class="section">
+    <div class="section-title">
+      <span class="icon" style="background:#1a2a3f">🔄</span>
+      Default Pipeline Steps
+    </div>
+    <div class="pipeline">
+      <div class="step"><div class="step-num">1/6</div><div class="step-name">Fetch Data</div><div class="step-note">yfinance</div></div>
+      <div class="step"><div class="step-num">2/6</div><div class="step-name">FFT Analysis</div><div class="step-note">scipy</div></div>
+      <div class="step"><div class="step-num">3/6</div><div class="step-name">Train/Test Split</div><div class="step-note">--train-end</div></div>
+      <div class="step optional"><div class="step-num">3b</div><div class="step-name">Window Optimizer</div><div class="step-note">--optimize-window</div></div>
+      <div class="step optional"><div class="step-num">3c</div><div class="step-name">Auto-N CV</div><div class="step-note">--auto-components</div></div>
+      <div class="step optional"><div class="step-num">3d</div><div class="step-name">Stability Weights</div><div class="step-note">--stability-weighted</div></div>
+      <div class="step"><div class="step-num">4/6</div><div class="step-name">Predict</div><div class="step-note">FFT / ensemble</div></div>
+      <div class="step"><div class="step-num">5/6</div><div class="step-name">Evaluate &amp; Dashboard</div><div class="step-note">HTML</div></div>
+      <div class="step"><div class="step-num">6/6</div><div class="step-name">Save Outputs</div><div class="step-note">CSV / SQLite</div></div>
+    </div>
+    <p style="font-size:0.78rem;color:var(--muted);margin-top:10px">Dashed-border steps are optional and activate only when the corresponding flag is passed.</p>
+  </div>
+
+
+  <!-- ══ EXECUTION MODES ═══════════════════════════════════════════════ -->
+  <div class="section">
+    <div class="section-title">
+      <span class="icon" style="background:#1f3a2a">⚡</span>
+      Execution Modes
+    </div>
+    <div class="mode-grid">
+      <div class="mode-card">
+        <span class="badge badge-default">Default</span>
+        <h3>Prediction Pipeline</h3>
+        <p>Full end-to-end pipeline: fetch → FFT → predict → evaluate → dashboard HTML + CSV.</p>
+        <code>python main.py AAPL \
+  --start 2022-01-01 \
+  --end 2025-01-01 \
+  --train-end 2024-06-01</code>
+      </div>
+      <div class="mode-card">
+        <span class="badge badge-flag">--backtest</span>
+        <h3>Backtest Mode</h3>
+        <p>Simulated trading strategy on historical data. Outputs trade log, equity curve CSV, and performance metrics.</p>
+        <code>python main.py AAPL \
+  --backtest \
+  --start 2020-01-01 \
+  --end 2024-12-31</code>
+      </div>
+      <div class="mode-card">
+        <span class="badge badge-advanced">--benchmark</span>
+        <h3>Benchmark Mode</h3>
+        <p>Systematically compares baseline vs auto-N vs stability vs ensemble across one or more tickers using walk-forward evaluation.</p>
+        <code>python main.py ^GSPC AAPL MSFT \
+  --benchmark \
+  --start 2015-01-01</code>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ══ POSITIONAL ════════════════════════════════════════════════════ -->
+  <div class="section">
+    <div class="section-title">
+      <span class="icon" style="background:#1f3a2a">📌</span>
+      Positional Argument
+    </div>
+    <div class="scroll">
+      <table class="arg-table">
+        <thead><tr>
+          <th>Argument</th><th>Type</th><th>Description</th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td class="flag">tickers</td>
+            <td><span class="type-pill pill-str">str+</span></td>
+            <td class="desc">One or more stock ticker symbols. Accepts indices (e.g. <code>^GSPC</code>, <code>^IXIC</code>, <code>^DJI</code>) and individual stocks (e.g. <code>AAPL</code>, <code>MSFT</code>). When multiple tickers are given, each runs sequentially through the selected mode.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+
+  <!-- ══ DATE RANGE ════════════════════════════════════════════════════ -->
+  <div class="section">
+    <div class="section-title">
+      <span class="icon" style="background:#2a2a1a">📅</span>
+      Date Range Options
+    </div>
+    <div class="scroll">
+      <table class="arg-table">
+        <thead><tr>
+          <th>Flag</th><th>Type</th><th>Default</th><th>Description</th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td class="flag">--start</td>
+            <td><span class="type-pill pill-date">date</span></td>
+            <td class="default-val">2020-01-01</td>
+            <td class="desc">Start of the data window. Ignored when <code class="flag">--all-data</code> is set.</td>
+          </tr>
+          <tr>
+            <td class="flag">--end</td>
+            <td><span class="type-pill pill-date">date</span></td>
+            <td class="default-val">2026-04-01</td>
+            <td class="desc">End of the data window. Ignored when <code class="flag">--all-data</code> is set.</td>
+          </tr>
+          <tr>
+            <td class="flag">--train-end</td>
+            <td><span class="type-pill pill-date">date</span></td>
+            <td class="default-val">2024-01-01</td>
+            <td class="desc">Train / test split boundary. Data before this date is used for FFT training; data from here onward is the held-out test set used for evaluation. Must be between <code>--start</code> and <code>--end</code>.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+
+  <!-- ══ PREDICTION OPTIONS ════════════════════════════════════════════ -->
+  <div class="section">
+    <div class="section-title">
+      <span class="icon" style="background:#1a2a3f">🔮</span>
+      Prediction Options
+    </div>
+    <div class="scroll">
+      <table class="arg-table">
+        <thead><tr>
+          <th>Flag</th><th>Type</th><th>Default</th><th>Description</th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td class="flag">--prediction-days</td>
+            <td><span class="type-pill pill-int">int</span></td>
+            <td class="default-val">30</td>
+            <td class="desc">Days to predict when no test set is available (i.e. <code>--all-data</code> mode without <code>--train-end</code>).</td>
+          </tr>
+          <tr>
+            <td class="flag">--n-components</td>
+            <td><span class="type-pill pill-int">int</span></td>
+            <td class="default-val">10</td>
+            <td class="desc">Number of dominant FFT frequency components to use for reconstruction and prediction. Overridden by <code>--auto-components</code> when that flag is set.</td>
+          </tr>
+          <tr>
+            <td class="flag">--forecast-horizon</td>
+            <td><span class="type-pill pill-int">int</span></td>
+            <td class="default-val">30</td>
+            <td class="desc">Horizon (in days) for soft projection confidence bands. Only relevant with <code>--soft-projection</code>.</td>
+          </tr>
+          <tr>
+            <td class="flag">--trend-type</td>
+            <td><span class="type-pill pill-str">str</span></td>
+            <td class="default-val">log</td>
+            <td class="desc">
+              Trend component extracted before FFT and re-added after prediction.
+              <div class="choices">
+                <span class="choice highlight">log</span>
+                <span class="choice">linear</span>
+                <span class="choice">polynomial_2</span>
+                <span class="choice">polynomial_3</span>
+                <span class="choice">none</span>
+              </div>
+              <div style="margin-top:6px;font-size:0.8rem;color:var(--muted)">
+                <code>log</code> — best for inflationary long-term series (S&amp;P, NASDAQ).<br>
+                <code>none</code> — pure FFT oscillation, no trend; use for short windows.
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td class="flag">--max-cycle-ratio</td>
+            <td><span class="type-pill pill-float">float</span></td>
+            <td class="default-val">0.33</td>
+            <td class="desc">Filters out FFT components whose implied period exceeds <code>n × ratio</code> trading days (where <em>n</em> is training window length). Default of 0.33 ensures at least 3 full cycles fit inside the window, suppressing spurious very-long cycles.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+
+  <!-- ══ MODE FLAGS ════════════════════════════════════════════════════ -->
+  <div class="section">
+    <div class="section-title">
+      <span class="icon" style="background:#2a1a1f">🚩</span>
+      Mode Flags
+    </div>
+    <div class="scroll">
+      <table class="arg-table">
+        <thead><tr>
+          <th>Flag</th><th>Type</th><th>Description</th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td class="flag">--all-data, -a</td>
+            <td><span class="type-pill pill-bool">bool</span></td>
+            <td class="desc">Fetch the maximum available history (back to 2000-01-01). Ignores <code>--start</code> and <code>--end</code>. Recommended for window optimizer and ensemble modes.</td>
+          </tr>
+          <tr>
+            <td class="flag">--backtest</td>
+            <td><span class="type-pill pill-bool">bool</span></td>
+            <td class="desc">Switch to backtest mode. Simulates a long/short strategy using FFT direction signals. Produces a trade log CSV, equity curve CSV, and prints Sharpe, drawdown, and return metrics.</td>
+          </tr>
+          <tr>
+            <td class="flag">--benchmark</td>
+            <td><span class="type-pill pill-bool">bool</span></td>
+            <td class="desc">Compare four prediction methods (baseline, auto_n, stability, ensemble) across all provided tickers using walk-forward MAPE. Saves a plain-text report to <code>outputs/benchmark_report.txt</code>.</td>
+          </tr>
+          <tr>
+            <td class="flag">--reconstruct</td>
+            <td><span class="type-pill pill-bool">bool</span></td>
+            <td class="desc">Include a signal reconstruction panel in the dashboard, showing how well the top-N FFT components reproduce the original price series.</td>
+          </tr>
+          <tr>
+            <td class="flag">--soft-projection</td>
+            <td><span class="type-pill pill-bool">bool</span></td>
+            <td class="desc">Use the soft-projection method from <code>reconstruction.py</code>. Generates a smoother forecast with explicit confidence bands. Disables trend-based prediction and window/ensemble optimizations.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+
+  <!-- ══ ADAPTIVE / ENSEMBLE FLAGS ════════════════════════════════════ -->
+  <div class="section">
+    <div class="section-title">
+      <span class="icon" style="background:#2a1f3a">🧠</span>
+      Adaptive &amp; Ensemble Options
+    </div>
+    <p style="font-size:0.83rem;color:var(--muted);margin-bottom:16px">
+      These flags run as sub-steps 3b → 3c → 3d inside the prediction pipeline and can be combined freely.
+      They have no effect when <code>--soft-projection</code> is set or when <code>--trend-type none</code> is used.
+    </p>
+    <div class="scroll">
+      <table class="arg-table">
+        <thead><tr>
+          <th>Flag</th><th>Type</th><th>Description</th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td class="flag">--optimize-window</td>
+            <td><span class="type-pill pill-bool">bool</span></td>
+            <td class="desc">
+              <strong>Step 3b.</strong> Tests six window lengths (504 d ≈ 2yr, 756 ≈ 3yr, 1260 ≈ 5yr, 2520 ≈ 10yr, 3780 ≈ 15yr, 5040 ≈ 20yr) and picks the best via a composite score:<br>
+              <code>0.5 × MAPE + 0.3 × (100 − DirAcc) + 0.2 × (1 − Stability) × 100</code><br>
+              The training data is then trimmed to the winning window length.
+            </td>
+          </tr>
+          <tr>
+            <td class="flag">--auto-components</td>
+            <td><span class="type-pill pill-bool">bool</span></td>
+            <td class="desc">
+              <strong>Step 3c.</strong> Runs cross-validation across candidate N values (typically 3–30) and selects the N that minimises hold-out MAPE. Overrides <code>--n-components</code>.
+            </td>
+          </tr>
+          <tr>
+            <td class="flag">--stability-weighted</td>
+            <td><span class="type-pill pill-bool">bool</span></td>
+            <td class="desc">
+              <strong>Step 3d.</strong> Computes a persistence score for each FFT cycle period by measuring how consistently it appears across rolling sub-windows. Components are ranked by <code>amplitude × (0.5 + 0.5 × stability)</code> instead of pure amplitude — boosting cycles that are genuinely recurring.
+            </td>
+          </tr>
+          <tr>
+            <td class="flag">--ensemble</td>
+            <td><span class="type-pill pill-bool">bool</span></td>
+            <td class="desc">
+              <strong>Step 4 (replaces single prediction).</strong> Runs predictions from four windows (2yr, 3yr, 5yr, 10yr) and combines them into a single forecast. Confidence bands are derived from the inter-window spread (± 1.5 σ). Disagreement score (mean std / mean price) is printed to stdout.
+            </td>
+          </tr>
+          <tr>
+            <td class="flag">--ensemble-weighting</td>
+            <td><span class="type-pill pill-str">str</span></td>
+            <td class="desc">
+              How ensemble windows are weighted. Only relevant when <code>--ensemble</code> is set.
+              <div class="choices">
+                <span class="choice highlight">performance</span>
+                <span class="choice">stability</span>
+                <span class="choice">equal</span>
+              </div>
+              <div style="margin-top:6px;font-size:0.8rem;color:var(--muted)">
+                <code>performance</code> — weight ∝ 1/MAPE on a 20-day held-out validation set (recommended).<br>
+                <code>stability</code> — weight ∝ spectral stability of that window.<br>
+                <code>equal</code> — simple average of all windows.
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+
+  <!-- ══ OUTPUT OPTIONS ════════════════════════════════════════════════ -->
+  <div class="section">
+    <div class="section-title">
+      <span class="icon" style="background:#1f3a2a">💾</span>
+      Output Options
+    </div>
+    <div class="scroll">
+      <table class="arg-table">
+        <thead><tr>
+          <th>Flag</th><th>Type</th><th>Default</th><th>Description</th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td class="flag">--output-dir</td>
+            <td><span class="type-pill pill-str">str</span></td>
+            <td class="default-val">outputs</td>
+            <td class="desc">Directory where all output files are written. Created automatically if it does not exist.</td>
+          </tr>
+          <tr>
+            <td class="flag">--save-to-db</td>
+            <td><span class="type-pill pill-bool">bool</span></td>
+            <td class="default-val">false</td>
+            <td class="desc">Persist predictions to a SQLite database in addition to the default CSV output.</td>
+          </tr>
+          <tr>
+            <td class="flag">--db-path</td>
+            <td><span class="type-pill pill-str">str</span></td>
+            <td class="default-val">outputs/predictions.db</td>
+            <td class="desc">Path to the SQLite database file. Only used when <code>--save-to-db</code> is set.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+
+  <!-- ══ BACKTEST OPTIONS ══════════════════════════════════════════════ -->
+  <div class="section">
+    <div class="section-title">
+      <span class="icon" style="background:#2a2a1a">📈</span>
+      Backtest-Specific Options
+    </div>
+    <div class="scroll">
+      <table class="arg-table">
+        <thead><tr>
+          <th>Flag</th><th>Type</th><th>Default</th><th>Description</th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td class="flag">--prediction-window</td>
+            <td><span class="type-pill pill-int">int</span></td>
+            <td class="default-val">252</td>
+            <td class="desc">Number of trading days of history fed into FFT at each backtest step (252 ≈ 1 year).</td>
+          </tr>
+          <tr>
+            <td class="flag">--hold-period</td>
+            <td><span class="type-pill pill-int">int</span></td>
+            <td class="default-val">5</td>
+            <td class="desc">Days to hold a position after entering. Shorter = more frequent trades; longer = reduced transaction noise.</td>
+          </tr>
+          <tr>
+            <td class="flag">--initial-capital</td>
+            <td><span class="type-pill pill-float">float</span></td>
+            <td class="default-val">10000</td>
+            <td class="desc">Starting capital in USD for the backtest simulation.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+
+  <!-- ══ OUTPUT FILES ══════════════════════════════════════════════════ -->
+  <div class="section">
+    <div class="section-title">
+      <span class="icon" style="background:#2a1f3a">📁</span>
+      Generated Output Files
+    </div>
+    <div class="scroll">
+      <table class="outputs-table">
+        <thead><tr>
+          <th>File</th><th>Mode</th><th>Description</th>
+        </tr></thead>
+        <tbody>
+          <tr>
+            <td class="file">{TICKER}_dashboard.html</td>
+            <td>Pipeline</td>
+            <td>Interactive Plotly dashboard with prediction chart, FFT spectrum, reconstruction, and metrics table.</td>
+          </tr>
+          <tr>
+            <td class="file">{TICKER}_predictions.csv</td>
+            <td>Pipeline</td>
+            <td>Date, actual price, predicted price, difference, and % error for each test day.</td>
+          </tr>
+          <tr>
+            <td class="file">predictions.db</td>
+            <td>Pipeline (--save-to-db)</td>
+            <td>SQLite database with one row per prediction. Path configurable via <code>--db-path</code>.</td>
+          </tr>
+          <tr>
+            <td class="file">pipeline.log</td>
+            <td>Pipeline</td>
+            <td>Structured log of each pipeline run with timestamps and key metrics.</td>
+          </tr>
+          <tr>
+            <td class="file">{TICKER}_backtest_trades.csv</td>
+            <td>Backtest</td>
+            <td>Full trade log: entry/exit dates, direction, return, and capital at close.</td>
+          </tr>
+          <tr>
+            <td class="file">{TICKER}_equity_curve.csv</td>
+            <td>Backtest</td>
+            <td>Portfolio value at each step of the simulation.</td>
+          </tr>
+          <tr>
+            <td class="file">benchmark_report.txt</td>
+            <td>Benchmark</td>
+            <td>Comparison table: MAPE, median MAPE, directional accuracy per method per ticker, with best method highlighted.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+
+  <!-- ══ EXAMPLES ══════════════════════════════════════════════════════ -->
+  <div class="section">
+    <div class="section-title">
+      <span class="icon" style="background:#1a2a3f">💡</span>
+      Example Commands
+    </div>
+    <div class="example-grid">
+
+      <div class="example-card">
+        <div class="ex-label">Basic</div>
+        <h4>Prediction on a specific date range</h4>
+        <code>python main.py AAPL \
+  --start 2023-01-01 \
+  --end 2025-01-01 \
+  --train-end 2024-06-01</code>
+        <div class="ex-desc">Trains on 2023-01-01 → 2024-06-01, evaluates on 2024-06-01 → 2025-01-01. Uses default log trend and 10 FFT components.</div>
+      </div>
+
+      <div class="example-card">
+        <div class="ex-label">Basic</div>
+        <h4>All available data — quickest way to get a forecast</h4>
+        <code>python main.py ^GSPC --all-data --trend-type log</code>
+        <div class="ex-desc">Fetches data from 2000-01-01. No manual date range needed. Good starting point before enabling adaptive options.</div>
+      </div>
+
+      <div class="example-card advanced">
+        <div class="ex-label">Adaptive</div>
+        <h4>Auto-select best historical window (2yr – 20yr)</h4>
+        <code>python main.py ^GSPC --all-data --optimize-window --trend-type log</code>
+        <div class="ex-desc">Runs walk-forward evaluation on six window lengths and trims the training set to the winner. Prints a ranked table of all windows. Use when unsure how much history is relevant.</div>
+      </div>
+
+      <div class="example-card advanced">
+        <div class="ex-label">Adaptive</div>
+        <h4>Cross-validated N components</h4>
+        <code>python main.py AAPL --all-data --auto-components --trend-type log</code>
+        <div class="ex-desc">Finds the best <span class="flag-ref">--n-components</span> via cross-validation instead of relying on the default of 10. Prints CV scores for each N tried.</div>
+      </div>
+
+      <div class="example-card advanced">
+        <div class="ex-label">Adaptive</div>
+        <h4>Stability-weighted component selection</h4>
+        <code>python main.py AAPL --all-data --stability-weighted --trend-type log</code>
+        <div class="ex-desc">Measures how consistently each FFT cycle appears across rolling sub-windows. Components that recur reliably get a higher effective amplitude — ephemeral noise gets down-weighted.</div>
+      </div>
+
+      <div class="example-card advanced">
+        <div class="ex-label">Ensemble</div>
+        <h4>Multi-window ensemble — most robust forecast</h4>
+        <code>python main.py ^GSPC --all-data \
+  --ensemble \
+  --ensemble-weighting performance \
+  --trend-type log</code>
+        <div class="ex-desc">Combines four separate predictions (2yr, 3yr, 5yr, 10yr windows) weighted by each window's recent held-out MAPE. Confidence bands come from inter-window spread (± 1.5 σ).</div>
+      </div>
+
+      <div class="example-card advanced">
+        <div class="ex-label">Full Stack</div>
+        <h4>All adaptive improvements combined</h4>
+        <code>python main.py AAPL ^GSPC --all-data \
+  --optimize-window \
+  --auto-components \
+  --stability-weighted \
+  --ensemble \
+  --ensemble-weighting performance \
+  --trend-type log \
+  --save-to-db</code>
+        <div class="ex-desc">Stacks all four adaptive sub-steps on two tickers sequentially. Steps 3b → 3c → 3d feed into the ensemble at step 4. Results are also persisted to SQLite.</div>
+      </div>
+
+      <div class="example-card backtest">
+        <div class="ex-label">Backtest</div>
+        <h4>Historical backtest with custom hold period</h4>
+        <code>python main.py AAPL \
+  --backtest \
+  --start 2020-01-01 \
+  --end 2024-12-31 \
+  --hold-period 10 \
+  --initial-capital 50000 \
+  --trend-type log</code>
+        <div class="ex-desc">Simulates trading AAPL from 2020 to 2024 with 10-day hold periods and $50k capital. Outputs Sharpe ratio, max drawdown, total return, and a full trade log CSV.</div>
+      </div>
+
+      <div class="example-card bench">
+        <div class="ex-label">Benchmark</div>
+        <h4>Systematic method comparison</h4>
+        <code>python main.py ^GSPC AAPL MSFT \
+  --benchmark \
+  --start 2015-01-01 \
+  --trend-type log \
+  --n-components 10</code>
+        <div class="ex-desc">Runs all four methods (baseline, auto_n, stability, ensemble) on three tickers over a 10-year span. Prints a ranked comparison table and saves it to <span class="flag-ref">outputs/benchmark_report.txt</span>.</div>
+      </div>
+
+      <div class="example-card">
+        <div class="ex-label">Output</div>
+        <h4>Save to SQLite with custom path</h4>
+        <code>python main.py MSFT \
+  --all-data \
+  --save-to-db \
+  --db-path data/my_predictions.db \
+  --output-dir data/results</code>
+        <div class="ex-desc">Writes the dashboard HTML and CSV to <span class="flag-ref">data/results/</span> and the predictions into a named SQLite file instead of the default location.</div>
+      </div>
+
+      <div class="example-card">
+        <div class="ex-label">Reconstruction</div>
+        <h4>Show how well FFT fits the training signal</h4>
+        <code>python main.py AAPL \
+  --all-data \
+  --reconstruct \
+  --n-components 15 \
+  --trend-type log</code>
+        <div class="ex-desc">Adds a reconstruction panel to the dashboard using the top 15 components. Useful for diagnosing underfitting (too few components) or overfitting (too many).</div>
+      </div>
+
+      <div class="example-card">
+        <div class="ex-label">Soft Projection</div>
+        <h4>Smooth forecast with confidence bands</h4>
+        <code>python main.py ^IXIC \
+  --all-data \
+  --soft-projection \
+  --forecast-horizon 60 \
+  --n-components 8</code>
+        <div class="ex-desc">Uses the soft-projection algorithm for a smoother, confidence-band-equipped forecast. Note: disables window optimizer and ensemble options.</div>
+      </div>
+
+    </div>
+  </div>
+
+
+  <!-- ══ FOOTER ════════════════════════════════════════════════════════ -->
+  <div class="footer">
+    FFT-Trading · Generated 2026-04-16 · <code>python main.py --help</code> for the full argparse output
+  </div>
+
+</div>
+</body>
+</html>
