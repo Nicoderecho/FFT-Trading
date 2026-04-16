@@ -39,7 +39,8 @@ def run_pipeline(
     use_soft_projection: bool = False,
     save_to_db: bool = False,
     db_path: Optional[str] = None,
-    trend_type: str = "linear"
+    trend_type: str = "linear",
+    max_cycle_ratio: float = 0.33
 ) -> None:
     """
     Run the complete FFT trading pipeline for a single ticker.
@@ -59,6 +60,7 @@ def run_pipeline(
         save_to_db: If True, save predictions to SQLite database
         db_path: Path to SQLite database (default: outputs/predictions.db)
         trend_type: Trend extraction type ('none', 'linear', 'polynomial_2', 'polynomial_3')
+        max_cycle_ratio: Exclude FFT components with period > n * ratio (default 0.33)
     """
     # Initialize logger
     logger = get_pipeline_logger(os.path.join(output_dir, "pipeline.log"))
@@ -138,7 +140,8 @@ def run_pipeline(
             prediction_result.train_prices,
             predict_days,
             n_components=n_components,
-            trend_type=trend_type
+            trend_type=trend_type,
+            max_cycle_ratio=max_cycle_ratio
         )
         confidence_score = None
         print(f"      Predicted range: ${min(predicted_prices):.2f} - ${max(predicted_prices):.2f}")
@@ -168,7 +171,8 @@ def run_pipeline(
         train_fit = reconstruct_training_fit(
             prediction_result.train_prices,
             n_components=n_components,
-            trend_type=trend_type
+            trend_type=trend_type,
+            max_cycle_ratio=max_cycle_ratio
         )
 
     # Evaluate metrics before building dashboard
@@ -288,7 +292,7 @@ def run_backtest_cli(
     start_date: str,
     end_date: str,
     output_dir: str,
-    prediction_window: int = 30,
+    prediction_window: int = 252,
     hold_period: int = 5,
     initial_capital: float = 10000,
     trend_type: str = 'log'
@@ -480,8 +484,14 @@ Examples:
     parser.add_argument(
         '--prediction-window',
         type=int,
-        default=30,
-        help='Prediction window for backtest (default: 30)'
+        default=252,
+        help='Prediction window for backtest in trading days (default: 252 = 1 year)'
+    )
+    parser.add_argument(
+        '--max-cycle-ratio',
+        type=float,
+        default=0.33,
+        help='Exclude FFT components with period > n * ratio (default: 0.33 = at least 3 full cycles)'
     )
     parser.add_argument(
         '--hold-period',
@@ -545,7 +555,8 @@ Examples:
                     use_soft_projection=args.soft_projection,
                     save_to_db=args.save_to_db,
                     db_path=args.db_path,
-                    trend_type=args.trend_type
+                    trend_type=args.trend_type,
+                    max_cycle_ratio=args.max_cycle_ratio
                 )
             except Exception as e:
                 print(f"\nError processing {ticker}: {e}\n")

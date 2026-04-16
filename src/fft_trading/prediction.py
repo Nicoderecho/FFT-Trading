@@ -176,7 +176,10 @@ def predict_future_with_trend(
     train_prices: List[float],
     prediction_days: int,
     n_components: int = 5,
-    trend_type: str = 'log'
+    trend_type: str = 'log',
+    max_cycle_ratio: float = 0.33,
+    apply_window: bool = True,
+    boundary_continuity: bool = True
 ) -> Tuple[List[float], dict]:
     """
     Predict future prices using FFT with trend component.
@@ -195,6 +198,12 @@ def predict_future_with_trend(
         prediction_days: Number of days to predict
         n_components: Number of FFT components to use
         trend_type: 'log' (default), 'linear', 'polynomial_2', 'polynomial_3', or 'none'
+        max_cycle_ratio: Exclude components whose period > n * ratio (default 0.33 = at
+            least 3 full cycles required). Prevents window-length artifacts from dominating.
+        apply_window: If True, apply a Hann window before FFT to suppress spectral leakage
+            from boundary discontinuities. Must match reconstruct_training_fit setting.
+        boundary_continuity: If True, apply an exponential-decay correction that closes
+            any gap between the last in-sample cycle value and the first forecast value.
 
     Returns:
         Tuple of (predicted_prices, metadata_dict)
@@ -220,6 +229,10 @@ def predict_future_with_trend(
 
     # Step 2: FFT on detrended series
     detrended_array = np.array(trend_result.detrended)
+    if apply_window:
+        w = np.hanning(n)
+        norm = np.sqrt(n / np.sum(w ** 2))  # RMS-preserve amplitude scale
+        detrended_array = detrended_array * w * norm
     fft_coeffs = fft(detrended_array)
     frequencies = np.fft.fftfreq(n)
 
@@ -227,18 +240,28 @@ def predict_future_with_trend(
     amplitudes = np.abs(fft_coeffs)
     sorted_indices = np.argsort(amplitudes)[::-1]
 
-    # Keep top components (excluding DC for detrended data)
+    # Keep top components: skip DC/negative freqs and window-length artifacts
     n_keep = min(n // 2, n_components)
+    max_period = n * max_cycle_ratio
     dominant_indices = []
     for idx in sorted_indices:
-        if frequencies[idx] < 0:
+        freq = frequencies[idx]
+        if freq <= 0:
+            continue
+        if (1.0 / freq) > max_period:  # Skip: requires < 3 full cycles in window
             continue
         dominant_indices.append(idx)
         if len(dominant_indices) >= n_keep:
             break
 
+    # Edge-case fallback: all components filtered (very short window) — use best available
     if not dominant_indices:
-        dominant_indices = [0]  # Fallback to DC
+        for idx in sorted_indices:
+            if frequencies[idx] > 0:
+                dominant_indices = [idx]
+                break
+        if not dominant_indices:
+            dominant_indices = [0]  # Last resort: DC
 
     # Step 4: Extrapolate cyclical component
     cycle_forecast = []
@@ -248,6 +271,17 @@ def predict_future_with_trend(
             coeff = fft_coeffs[idx]
             value += coeff * np.exp(2j * np.pi * idx * t / n)
         cycle_forecast.append(np.real(value / n))
+
+    # Boundary continuity: exponential decay closes gap between in-sample end and forecast start
+    if boundary_continuity and dominant_indices:
+        last_fit = np.real(
+            sum(fft_coeffs[i] * np.exp(2j * np.pi * i * (n - 1) / n)
+                for i in dominant_indices) / n
+        )
+        gap = last_fit - cycle_forecast[0]
+        tau = max(len(cycle_forecast) // 5, 5)
+        for t_idx in range(len(cycle_forecast)):
+            cycle_forecast[t_idx] += gap * np.exp(-t_idx / tau)
 
     # Step 5: Extrapolate trend
     trend_forecast = extrapolate_trend(trend_result, prediction_days)
@@ -280,7 +314,9 @@ def predict_future_with_trend(
 def reconstruct_training_fit(
     train_prices: List[float],
     n_components: int = 5,
-    trend_type: str = 'log'
+    trend_type: str = 'log',
+    max_cycle_ratio: float = 0.33,
+    apply_window: bool = True
 ) -> List[float]:
     """
     Return the FFT model's in-sample fit over the training period.
@@ -294,6 +330,8 @@ def reconstruct_training_fit(
         train_prices: Historical prices used for training
         n_components: Number of FFT components (must match predict call)
         trend_type: Trend type (must match predict call)
+        max_cycle_ratio: Same period-cutoff ratio as predict_future_with_trend. Must match.
+        apply_window: Same Hann-window flag as predict_future_with_trend. Must match.
 
     Returns:
         List of reconstructed prices over the training period
@@ -317,8 +355,12 @@ def reconstruct_training_fit(
     else:
         trend_result = extract_linear_trend(train_prices)
 
-    # FFT on detrended series
+    # FFT on detrended series (must use identical window/filter as predict_future_with_trend)
     detrended_array = np.array(trend_result.detrended)
+    if apply_window:
+        w = np.hanning(n)
+        norm = np.sqrt(n / np.sum(w ** 2))
+        detrended_array = detrended_array * w * norm
     fft_coeffs = fft(detrended_array)
     frequencies = np.fft.fftfreq(n)
 
@@ -326,15 +368,24 @@ def reconstruct_training_fit(
     amplitudes = np.abs(fft_coeffs)
     sorted_indices = np.argsort(amplitudes)[::-1]
     n_keep = min(n // 2, n_components)
+    max_period = n * max_cycle_ratio
     dominant_indices = []
     for idx in sorted_indices:
-        if frequencies[idx] < 0:
+        freq = frequencies[idx]
+        if freq <= 0:
+            continue
+        if (1.0 / freq) > max_period:
             continue
         dominant_indices.append(idx)
         if len(dominant_indices) >= n_keep:
             break
     if not dominant_indices:
-        dominant_indices = [0]
+        for idx in sorted_indices:
+            if frequencies[idx] > 0:
+                dominant_indices = [idx]
+                break
+        if not dominant_indices:
+            dominant_indices = [0]
 
     # Evaluate Fourier series at training time points t = 0..n-1
     cycle_fit = []
