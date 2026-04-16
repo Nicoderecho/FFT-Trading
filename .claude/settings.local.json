@@ -12,7 +12,8 @@
       "Bash(git commit:*)",
       "Bash(python -m py_compile main.py)",
       "Bash(python:*)",
-      "Bash(pytest tests/ -v)"
+      "Bash(pytest tests/ -v)",
+      "Skill(commit-commands:commit-push-pr)"
     ]
   }
 }

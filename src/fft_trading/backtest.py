@@ -55,7 +55,7 @@ def run_backtest(
     ticker: str,
     start_date: str,
     end_date: str,
-    prediction_window: int = 30,
+    prediction_window: int = 252,
     hold_period: int = 5,
     initial_capital: float = 10000,
     transaction_cost: float = 0.001,

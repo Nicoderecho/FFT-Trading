@@ -50,7 +50,40 @@ from .reconstruction import (
 )
 
 # Prediction
-from .prediction import predict_future, PredictionResult, prepare_train_test_split
+from .prediction import (
+    predict_future,
+    predict_future_with_trend,
+    reconstruct_training_fit,
+    find_optimal_n_components,
+    compute_stability_weights,
+    PredictionResult,
+    prepare_train_test_split,
+)
+
+# Window optimization
+from .window_optimizer import (
+    find_optimal_window,
+    evaluate_window,
+    create_window_analysis_report,
+    WindowEvaluation,
+    WindowRecommendation,
+    DEFAULT_CANDIDATE_WINDOWS,
+)
+
+# Multi-window ensemble
+from .ensemble import (
+    ensemble_predict,
+    EnsemblePrediction,
+    DEFAULT_ENSEMBLE_WINDOWS,
+)
+
+# Benchmarking
+from .benchmark import (
+    run_benchmark,
+    create_benchmark_report,
+    BenchmarkResult,
+    BenchmarkReport,
+)
 
 # Metrics & Evaluation
 from .metrics import (
@@ -81,6 +114,7 @@ from .backtest import (
 
 # Visualization
 from .visualization import (
+    create_dashboard,
     create_prediction_plot,
     create_fft_plot,
     create_reconstruction_plot,
@@ -146,8 +180,31 @@ __all__ = [
 
     # Prediction
     'predict_future',
+    'predict_future_with_trend',
+    'reconstruct_training_fit',
+    'find_optimal_n_components',
+    'compute_stability_weights',
     'PredictionResult',
     'prepare_train_test_split',
+
+    # Window optimization
+    'find_optimal_window',
+    'evaluate_window',
+    'create_window_analysis_report',
+    'WindowEvaluation',
+    'WindowRecommendation',
+    'DEFAULT_CANDIDATE_WINDOWS',
+
+    # Ensemble
+    'ensemble_predict',
+    'EnsemblePrediction',
+    'DEFAULT_ENSEMBLE_WINDOWS',
+
+    # Benchmark
+    'run_benchmark',
+    'create_benchmark_report',
+    'BenchmarkResult',
+    'BenchmarkReport',
 
     # Metrics
     'evaluate_prediction',

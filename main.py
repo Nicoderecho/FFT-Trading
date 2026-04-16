@@ -7,8 +7,23 @@ from typing import List, Optional
 
 from src.fft_trading.data_fetcher import fetch_stock_data, StockData
 from src.fft_trading.fft_analysis import analyze_fft, reconstruct_signal, FFTResult
-from src.fft_trading.prediction import prepare_train_test_split, predict_future, predict_future_with_trend, PredictionResult
+from src.fft_trading.prediction import (
+    prepare_train_test_split,
+    predict_future,
+    predict_future_with_trend,
+    reconstruct_training_fit,
+    find_optimal_n_components,
+    compute_stability_weights,
+    PredictionResult,
+)
+from src.fft_trading.window_optimizer import (
+    find_optimal_window,
+    create_window_analysis_report,
+)
+from src.fft_trading.ensemble import ensemble_predict
+from src.fft_trading.benchmark import run_benchmark, create_benchmark_report
 from src.fft_trading.visualization import (
+    create_dashboard,
     create_prediction_plot,
     create_fft_plot,
     create_reconstruction_plot,
@@ -38,7 +53,13 @@ def run_pipeline(
     use_soft_projection: bool = False,
     save_to_db: bool = False,
     db_path: Optional[str] = None,
-    trend_type: str = "linear"
+    trend_type: str = "linear",
+    max_cycle_ratio: float = 0.33,
+    optimize_window: bool = False,
+    auto_components: bool = False,
+    stability_weighted: bool = False,
+    use_ensemble: bool = False,
+    ensemble_weighting: str = "performance",
 ) -> None:
     """
     Run the complete FFT trading pipeline for a single ticker.
@@ -58,6 +79,7 @@ def run_pipeline(
         save_to_db: If True, save predictions to SQLite database
         db_path: Path to SQLite database (default: outputs/predictions.db)
         trend_type: Trend extraction type ('none', 'linear', 'polynomial_2', 'polynomial_3')
+        max_cycle_ratio: Exclude FFT components with period > n * ratio (default 0.33)
     """
     # Initialize logger
     logger = get_pipeline_logger(os.path.join(output_dir, "pipeline.log"))
@@ -114,10 +136,62 @@ def run_pipeline(
     print(f"      Training samples: {len(prediction_result.train_prices)}")
     print(f"      Test samples: {len(prediction_result.test_prices)}")
 
+    # Step 3b (optional): Optimize window length on training data
+    effective_train_prices = prediction_result.train_prices
+    if optimize_window and not use_soft_projection:
+        print(f"\n      Optimizing historical window length...")
+        recommendation = find_optimal_window(
+            effective_train_prices,
+            n_components=n_components,
+            trend_type=trend_type,
+            max_cycle_ratio=max_cycle_ratio,
+            ticker=ticker
+        )
+        print(create_window_analysis_report(recommendation))
+        logger.info(f"Window optimizer: best={recommendation.best_window}d")
+        # Trim training data to the best window
+        best_window = recommendation.best_window
+        if best_window < len(effective_train_prices):
+            effective_train_prices = effective_train_prices[-best_window:]
+            print(f"      Using last {best_window} days for prediction.")
+
+    # Step 3c (optional): Auto-optimize n_components via cross-validation
+    effective_n_components = n_components
+    if auto_components and not use_soft_projection and trend_type != "none":
+        print(f"\n      Finding optimal n_components via cross-validation...")
+        best_n, cv_details = find_optimal_n_components(
+            effective_train_prices,
+            trend_type=trend_type,
+            max_cycle_ratio=max_cycle_ratio
+        )
+        scores_summary = ", ".join(
+            f"N={n}:MAPE={s:.1f}" for n, s in cv_details['scores_by_n'].items()
+            if s != float('inf')
+        )
+        print(f"      CV scores: {scores_summary}")
+        print(f"      Best n_components: {best_n}")
+        logger.info(f"Auto-N: best={best_n}, cv_scores={cv_details['scores_by_n']}")
+        effective_n_components = best_n
+
+    # Step 3d (optional): Compute stability weights for component selection
+    stab_weights = None
+    if stability_weighted and not use_soft_projection and trend_type != "none":
+        print(f"\n      Computing cycle stability weights...")
+        stab_weights = compute_stability_weights(effective_train_prices)
+        # Show the top-5 most stable periods
+        if stab_weights:
+            top_stable = sorted(stab_weights.items(), key=lambda x: x[1], reverse=True)[:5]
+            stable_str = ", ".join(f"{p:.0f}d({w:.0%})" for p, w in top_stable)
+            print(f"      Top stable cycles: {stable_str}")
+            logger.info(f"Stability weights computed: {len(stab_weights)} unique cycles")
+
     # Step 4: Predict future prices
     test_days = len(prediction_result.test_dates)
     predict_days = test_days if test_days > 0 else prediction_days
     print(f"\n[4/6] Predicting {predict_days} days (test period)...")
+
+    # Track ensemble result for visualization purposes
+    ensemble_result = None
 
     if use_soft_projection:
         # Use soft projection with confidence bands
@@ -131,13 +205,45 @@ def run_pipeline(
         print(f"      Predicted range: ${min(predicted_prices):.2f} - ${max(predicted_prices):.2f}")
         print(f"      Confidence score: {confidence_score:.0%}")
         logger.info(f"Soft projection: confidence={confidence_score:.0%}, range=${min(predicted_prices):.2f}-${max(predicted_prices):.2f}")
+    elif use_ensemble and trend_type != "none":
+        # Multi-window ensemble prediction
+        print(f"      Running multi-window ensemble ({ensemble_weighting} weighting)...")
+        ensemble_result = ensemble_predict(
+            effective_train_prices,
+            predict_days,
+            n_components=effective_n_components,
+            trend_type=trend_type,
+            max_cycle_ratio=max_cycle_ratio,
+            weighting=ensemble_weighting,
+            use_stability_components=stability_weighted
+        )
+        predicted_prices = ensemble_result.predicted_prices
+        confidence_score = 1.0 - min(ensemble_result.disagreement_score, 1.0)
+        weights_str = ", ".join(
+            f"{w}d={v:.0%}" for w, v in ensemble_result.window_weights.items()
+        )
+        print(f"      Ensemble windows: {weights_str}")
+        print(f"      Predicted range: ${min(predicted_prices):.2f} - ${max(predicted_prices):.2f}")
+        print(f"      Disagreement: {ensemble_result.disagreement_score:.3f} (lower = more confident)")
+        logger.info(f"Ensemble ({ensemble_result.n_windows_used} windows): disagreement={ensemble_result.disagreement_score:.3f}")
+        # Build trend_metadata shim for downstream code
+        trend_metadata = {
+            'trend_type': f'ensemble_{ensemble_weighting}',
+            'trend_params': {'slope': 0.0},
+            'dominant_frequencies': [],
+            'mean_cycle_amplitude': 0.0,
+            'trend_slope': 0.0,
+        }
+        prediction_result.trend_info = trend_metadata
     elif trend_type != "none":
         # Use FFT with trend component (crucial for inflationary markets)
         predicted_prices, trend_metadata = predict_future_with_trend(
-            prediction_result.train_prices,
+            effective_train_prices,
             predict_days,
-            n_components=n_components,
-            trend_type=trend_type
+            n_components=effective_n_components,
+            trend_type=trend_type,
+            max_cycle_ratio=max_cycle_ratio,
+            stability_weights=stab_weights
         )
         confidence_score = None
         print(f"      Predicted range: ${min(predicted_prices):.2f} - ${max(predicted_prices):.2f}")
@@ -155,23 +261,46 @@ def run_pipeline(
     prediction_result.fft_result = fft_result
     prediction_result.predicted_prices = predicted_prices
 
-    # Step 5: Generate visualizations
-    print(f"\n[5/6] Generating visualizations...")
+    # Step 5: Evaluate + visualize
+    print(f"\n[5/6] Evaluating and generating dashboard...")
 
-    # Prediction plot
-    pred_plot_path = os.path.join(output_dir, f"{ticker}_prediction.html")
     train_end_idx = stock_data.dates.index(train_end_date) if train_end_date in stock_data.dates else None
-    create_prediction_plot(
-        stock_data,
-        predicted_prices,
-        output_path=pred_plot_path,
-        train_end_idx=train_end_idx
-    )
-    print(f"      Prediction plot: {pred_plot_path}")
+    test_predicted = predicted_prices[:len(prediction_result.test_dates)]
 
-    # FFT spectrum plot with power spectrum
-    fft_plot_path = os.path.join(output_dir, f"{ticker}_fft_spectrum.html")
-    # Convert FrequencySpectrum dataclass to dict for visualization
+    # In-sample FFT fit for full prediction line
+    train_fit = None
+    if not use_soft_projection and not use_ensemble and trend_type != "none" and train_end_idx is not None:
+        fit_segment = reconstruct_training_fit(
+            effective_train_prices,
+            n_components=effective_n_components,
+            trend_type=trend_type,
+            max_cycle_ratio=max_cycle_ratio,
+            stability_weights=stab_weights
+        )
+        # If window was trimmed, pad the front so fit aligns with the LAST
+        # len(effective_train_prices) positions of the full training data
+        full_train_len = len(prediction_result.train_prices)
+        if len(fit_segment) < full_train_len:
+            pad_len = full_train_len - len(fit_segment)
+            train_fit = [float('nan')] * pad_len + list(fit_segment)
+        else:
+            train_fit = fit_segment
+
+    # Evaluate metrics before building dashboard
+    metrics = None
+    if len(prediction_result.test_prices) > 0 and len(test_predicted) > 0:
+        metrics = evaluate_prediction(prediction_result)
+        print(f"      Evaluation Metrics:")
+        for metric, value in metrics.items():
+            print(f"        {metric}: {value}")
+        logger.info(f"Evaluation metrics: {metrics}")
+
+    # Optional reconstruction
+    reconstruction = None
+    if reconstruct:
+        reconstruction = reconstruct_signal_from_top_frequencies(fft_result, n_components)
+
+    # Convert FrequencySpectrum dataclass to dict
     spectral_dict = {
         'periods': spectral_data.periods,
         'power': spectral_data.power,
@@ -179,46 +308,29 @@ def run_pipeline(
         'amplitudes': spectral_data.amplitudes,
         'phases': spectral_data.phases
     }
-    create_spectrum_plot(spectral_dict, dominant_cycles, output_path=fft_plot_path, ticker=ticker)
-    print(f"      FFT spectrum (power): {fft_plot_path}")
 
-    # Reconstruction plot (optional)
-    if reconstruct:
-        print(f"      [Extra] Generating reconstruction plot...")
-        reconstruction = reconstruct_signal_from_top_frequencies(fft_result, n_components)
-        recon_plot_path = os.path.join(output_dir, f"{ticker}_reconstruction.html")
-        create_reconstruction_plot(
-            stock_data.dates,
-            stock_data.prices,
-            reconstruction,
-            output_path=recon_plot_path,
-            ticker=ticker
-        )
-        print(f"      Reconstruction plot: {recon_plot_path}")
+    # Single dashboard HTML
+    dashboard_path = os.path.join(output_dir, f"{ticker}_dashboard.html")
+    create_dashboard(
+        stock_data=stock_data,
+        predicted_prices=predicted_prices,
+        train_end_idx=train_end_idx,
+        spectral_data=spectral_dict,
+        dominant_cycles=dominant_cycles,
+        output_path=dashboard_path,
+        train_fit=train_fit,
+        metrics=metrics,
+        reconstruction=reconstruction,
+        trend_info=prediction_result.trend_info,
+    )
+    print(f"      Dashboard: {dashboard_path}")
+    logger.info(f"Dashboard saved: {dashboard_path}")
 
-        # Forecast plot with confidence band
-        if use_soft_projection:
-            forecast_plot_path = os.path.join(output_dir, f"{ticker}_forecast.html")
-            forecast_data = {
-                'forecast_signal': projection['forecast'],
-                'confidence_band': projection['confidence_band'],
-                'confidence_score': projection['confidence_score']
-            }
-            create_forecast_plot(
-                stock_data.dates,
-                stock_data.prices,
-                forecast_data,
-                output_path=forecast_plot_path,
-                ticker=ticker
-            )
-            print(f"      Forecast plot: {forecast_plot_path}")
-
-    # Step 6: Save outputs and evaluate
-    print(f"\n[6/6] Saving outputs and evaluating...")
+    # Step 6: Save data outputs
+    print(f"\n[6/6] Saving data outputs...")
 
     # Save predictions to CSV
     csv_path = os.path.join(output_dir, f"{ticker}_predictions.csv")
-    test_predicted = predicted_prices[:len(prediction_result.test_dates)]
     export_predictions_csv(
         csv_path,
         prediction_result.test_dates,
@@ -249,19 +361,6 @@ def run_pipeline(
         save_predictions_sqlite(db_path, ticker, predictions_list)
         print(f"      Saved to database: {db_path}")
         logger.info(f"Saved predictions to database: {db_path}")
-
-    # Evaluate prediction quality
-    if len(prediction_result.test_prices) > 0 and len(test_predicted) > 0:
-        print(f"\n      Evaluation Metrics:")
-        metrics = evaluate_prediction(prediction_result)
-        for metric, value in metrics.items():
-            print(f"        {metric}: {value}")
-        logger.info(f"Evaluation metrics: {metrics}")
-
-        # Save metrics summary
-        metrics_path = os.path.join(output_dir, f"{ticker}_metrics.html")
-        create_metrics_summary_table(metrics, output_path=metrics_path, ticker=ticker)
-        print(f"      Metrics summary: {metrics_path}")
 
     print(f"\n{'='*60}")
     print(f"Pipeline completed for {ticker}!")
@@ -304,7 +403,7 @@ def run_backtest_cli(
     start_date: str,
     end_date: str,
     output_dir: str,
-    prediction_window: int = 30,
+    prediction_window: int = 252,
     hold_period: int = 5,
     initial_capital: float = 10000,
     trend_type: str = 'log'
@@ -388,6 +487,24 @@ Examples:
 
   # Generate reconstruction plots
   python main.py AAPL --reconstruct --n-components 10
+
+  # Auto-select optimal historical window (2yr-20yr) — answers "which period is best?"
+  python main.py AAPL --all-data --optimize-window
+
+  # Auto-tune n_components via cross-validation
+  python main.py AAPL --all-data --auto-components
+
+  # Weight FFT components by cross-window stability
+  python main.py AAPL --all-data --stability-weighted
+
+  # Multi-window ensemble prediction (most robust)
+  python main.py AAPL --all-data --ensemble --ensemble-weighting performance
+
+  # All improvements combined
+  python main.py AAPL --all-data --optimize-window --auto-components --stability-weighted --ensemble
+
+  # Systematic benchmark comparing all methods
+  python main.py ^GSPC AAPL MSFT --benchmark --start 2015-01-01
 
   # Run backtest
   python main.py AAPL --backtest --start 2024-01-01 --end 2024-12-31
@@ -473,6 +590,40 @@ Examples:
         help='Trend extraction type: log (default, for inflationary markets), linear, polynomial_2, polynomial_3, none'
     )
 
+    # Adaptive & ensemble options
+    parser.add_argument(
+        '--optimize-window',
+        action='store_true',
+        help='Auto-select best historical window length (2yr-20yr) via walk-forward evaluation'
+    )
+    parser.add_argument(
+        '--auto-components',
+        action='store_true',
+        help='Auto-select best n_components via cross-validation'
+    )
+    parser.add_argument(
+        '--stability-weighted',
+        action='store_true',
+        help='Weight FFT components by cross-window stability (persistent cycles favored)'
+    )
+    parser.add_argument(
+        '--ensemble',
+        action='store_true',
+        help='Use multi-window ensemble predictions (combines 2yr, 3yr, 5yr, 10yr views)'
+    )
+    parser.add_argument(
+        '--ensemble-weighting',
+        type=str,
+        choices=['equal', 'performance', 'stability'],
+        default='performance',
+        help='How to weight ensemble windows (default: performance)'
+    )
+    parser.add_argument(
+        '--benchmark',
+        action='store_true',
+        help='Run systematic benchmark comparing baseline vs auto-N vs stability vs ensemble'
+    )
+
     # Output options
     parser.add_argument(
         '--output-dir',
@@ -496,8 +647,14 @@ Examples:
     parser.add_argument(
         '--prediction-window',
         type=int,
-        default=30,
-        help='Prediction window for backtest (default: 30)'
+        default=252,
+        help='Prediction window for backtest in trading days (default: 252 = 1 year)'
+    )
+    parser.add_argument(
+        '--max-cycle-ratio',
+        type=float,
+        default=0.33,
+        help='Exclude FFT components with period > n * ratio (default: 0.33 = at least 3 full cycles)'
     )
     parser.add_argument(
         '--hold-period',
@@ -514,8 +671,8 @@ Examples:
 
     args = parser.parse_args()
 
-    # Skip date validation if using all available data
-    if not args.all_data and not args.backtest:
+    # Skip date validation if using all available data or benchmarking
+    if not args.all_data and not args.backtest and not args.benchmark:
         # Validate train_end is between start and end
         if not (args.start <= args.train_end <= args.end):
             print(f"Error: --train-end must be between --start and --end")
@@ -527,7 +684,26 @@ Examples:
             return
 
     # Run appropriate mode
-    if args.backtest:
+    if args.benchmark:
+        # Run systematic benchmark mode
+        os.makedirs(args.output_dir, exist_ok=True)
+        print(f"\nRunning benchmark across {len(args.tickers)} ticker(s): {args.tickers}")
+        report = run_benchmark(
+            tickers=list(args.tickers),
+            start_date=args.start,
+            end_date=args.end,
+            trend_type=args.trend_type,
+            max_cycle_ratio=args.max_cycle_ratio,
+            n_components=args.n_components,
+        )
+        report_text = create_benchmark_report(report)
+        print(report_text)
+        # Save plain-text report
+        report_path = os.path.join(args.output_dir, "benchmark_report.txt")
+        with open(report_path, 'w', encoding='utf-8') as f:
+            f.write(report_text)
+        print(f"\nReport saved to: {report_path}")
+    elif args.backtest:
         # Run backtest mode
         for ticker in args.tickers:
             try:
@@ -561,7 +737,13 @@ Examples:
                     use_soft_projection=args.soft_projection,
                     save_to_db=args.save_to_db,
                     db_path=args.db_path,
-                    trend_type=args.trend_type
+                    trend_type=args.trend_type,
+                    max_cycle_ratio=args.max_cycle_ratio,
+                    optimize_window=args.optimize_window,
+                    auto_components=args.auto_components,
+                    stability_weighted=args.stability_weighted,
+                    use_ensemble=args.ensemble,
+                    ensemble_weighting=args.ensemble_weighting,
                 )
             except Exception as e:
                 print(f"\nError processing {ticker}: {e}\n")
